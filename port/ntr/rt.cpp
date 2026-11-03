@@ -18,10 +18,10 @@ constexpr uint32_t REG_IF = 0x04000214;
 constexpr uint32_t REG_VCOUNT = 0x04000006;
 
 inline volatile uint32_t &reg32(uint32_t a) {
-    return *reinterpret_cast<volatile uint32_t *>(a);
+    return *static_cast<volatile uint32_t *>(host_ptr(a));
 }
 inline volatile uint16_t &reg16(uint32_t a) {
-    return *reinterpret_cast<volatile uint16_t *>(a);
+    return *static_cast<volatile uint16_t *>(host_ptr(a));
 }
 
 struct Runtime {

@@ -34,8 +34,8 @@ constexpr EngineMap kEngines[2] = {
     {0x04001000u, 0x06200000u, 0x05000400u, false},
 };
 
-inline uint16_t rd16(uint32_t a) { return *reinterpret_cast<volatile uint16_t *>(a); }
-inline uint32_t rd32(uint32_t a) { return *reinterpret_cast<volatile uint32_t *>(a); }
+inline uint16_t rd16(uint32_t a) { return *host_ptr_t<volatile uint16_t>(a); }
+inline uint32_t rd32(uint32_t a) { return *host_ptr_t<volatile uint32_t>(a); }
 
 // DS palettes are BGR555.
 inline uint32_t bgr555(uint16_t c) {
@@ -105,11 +105,11 @@ bool sample_bg(const EngineMap &em, const BgConfig &c, int x, int y, uint32_t &o
 
     uint32_t index;
     if (c.bpp8) {
-        index = *reinterpret_cast<volatile uint8_t *>(c.chars + tile * 64 + fy * 8 + fx);
+        index = *host_ptr_t<volatile uint8_t>(c.chars + tile * 64 + fy * 8 + fx);
         if (index == 0) return false;
     } else {
         const uint8_t pair =
-            *reinterpret_cast<volatile uint8_t *>(c.chars + tile * 32 + fy * 4 + (fx >> 1));
+            *host_ptr_t<volatile uint8_t>(c.chars + tile * 32 + fy * 4 + (fx >> 1));
         index = (fx & 1) ? (pair >> 4) : (pair & 0xF);
         if (index == 0) return false;
         index += ((se >> 12) & 0xF) * 16;
@@ -230,13 +230,13 @@ void ppu_scanout_obj(Engine eng, Framebuffer &fb) {
                 if (c256) {
                     const uint32_t addr = obj_vram + tile * boundary
                                           + tno * 64u + fy * 8u + fx;
-                    index = *reinterpret_cast<volatile uint8_t *>(addr);
+                    index = *host_ptr_t<volatile uint8_t>(addr);
                     if (!index) continue;
                     fb.px[py][px] = bgr555(rd16(obj_pltt + index * 2u));
                 } else {
                     const uint32_t addr = obj_vram + tile * boundary
                                           + tno * 32u + fy * 4u + fx / 2;
-                    const uint8_t b = *reinterpret_cast<volatile uint8_t *>(addr);
+                    const uint8_t b = *host_ptr_t<volatile uint8_t>(addr);
                     index = (fx & 1) ? (b >> 4) : (b & 0xF);
                     if (!index) continue;
                     fb.px[py][px] = bgr555(rd16(obj_pltt + (pal * 16u + index) * 2u));

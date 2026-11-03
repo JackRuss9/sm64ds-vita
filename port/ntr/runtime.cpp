@@ -15,6 +15,7 @@
 #include "ntr/rt.h"
 
 #include "ntr/gx.h"
+#include "ntr/mmio.h"
 
 #include <cstring>
 
@@ -46,17 +47,24 @@ void WaitByLoop(void) {}
 
 // swi 0x0B/0x0C. The DS BIOS copies in 4- or 32-byte units, with an optional
 // fixed-source fill mode; bit 24 selects fill, bit 26 selects 32-bit units.
+// A pointer the game holds may be a DS address (a VRAM bank, the palette or
+// OAM) rather than host memory; resolve it before touching memory. Identity
+// where the regions are mapped at their real addresses.
+static inline void *ds(const void *p) {
+    return ntr::host_ptr(reinterpret_cast<uintptr_t>(p));
+}
+
 extern "C" void CpuSet(const void *src, void *dst, unsigned int ctrl) {
     const unsigned int count = ctrl & 0x1FFFFF;
     const bool fill = (ctrl >> 24) & 1;
     const bool word = (ctrl >> 26) & 1;
     if (word) {
-        const uint32_t *s = static_cast<const uint32_t *>(src);
-        uint32_t *d = static_cast<uint32_t *>(dst);
+        const uint32_t *s = static_cast<const uint32_t *>(ds(src));
+        uint32_t *d = static_cast<uint32_t *>(ds(dst));
         for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
     } else {
-        const uint16_t *s = static_cast<const uint16_t *>(src);
-        uint16_t *d = static_cast<uint16_t *>(dst);
+        const uint16_t *s = static_cast<const uint16_t *>(ds(src));
+        uint16_t *d = static_cast<uint16_t *>(ds(dst));
         for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
     }
 }
@@ -64,8 +72,8 @@ extern "C" void CpuSet(const void *src, void *dst, unsigned int ctrl) {
 extern "C" void CpuFastSet(const void *src, void *dst, unsigned int ctrl) {
     const unsigned int count = ctrl & 0x1FFFFF;
     const bool fill = (ctrl >> 24) & 1;
-    const uint32_t *s = static_cast<const uint32_t *>(src);
-    uint32_t *d = static_cast<uint32_t *>(dst);
+    const uint32_t *s = static_cast<const uint32_t *>(ds(src));
+    uint32_t *d = static_cast<uint32_t *>(ds(dst));
     for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
 }
 
@@ -87,9 +95,12 @@ constexpr uint32_t GXFIFO = 0x04000400u;
 
 void copy_words(const uint32_t *src, uint32_t *dst, int n) {
     if (reinterpret_cast<uintptr_t>(dst) == GXFIFO) {
-        for (int i = 0; i < n; ++i) ntr::gx_write_fifo(src[i]);
+        const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
+        for (int i = 0; i < n; ++i) ntr::gx_write_fifo(s[i]);
     } else {
-        for (int i = 0; i < n; ++i) dst[i] = src[i];
+        const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
+        uint32_t *d = static_cast<uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
+        for (int i = 0; i < n; ++i) d[i] = s[i];
     }
 }
 
@@ -109,7 +120,8 @@ extern "C" void Copy48BytesFixed(int *src, int *dst) {
     if (reinterpret_cast<uintptr_t>(dst) == 0x04000400u) {
         for (int i = 0; i < 12; ++i) ntr::gx_write_fifo(static_cast<uint32_t>(src[i]));
     } else {
-        for (int i = 0; i < 12; ++i) dst[i] = src[i];
+        int *d = static_cast<int *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
+        for (int i = 0; i < 12; ++i) d[i] = src[i];
     }
 }
 
@@ -160,6 +172,9 @@ extern "C" unsigned _ZN3IRQ11DisableIRQsEj(unsigned mask) {
 }
 extern "C" void _ZN3IRQ15ClearInterruptsEj(unsigned) {}
 
+// MSVC-only: under GCC/Clang (Itanium ABI) the extern "C" spellings above
+// already ARE these C++ symbols, so the forwarders would redefine them.
+#if defined(_MSC_VER)
 // The same registry under include/IRQ.h's real names. Decomp files that call
 // IRQ::GetIRQHandler and friends through that header (MI_SendGXCommandAsync) link
 // against these C++-linkage definitions; files that still declare the mangled
@@ -181,6 +196,7 @@ unsigned ClearInterrupts(unsigned mask) {
 unsigned Disable() { return _ZN3IRQ7DisableEv(); }
 unsigned Restore(unsigned prev) { return _ZN3IRQ7RestoreEj(prev); }
 }  // namespace IRQ
+#endif  // _MSC_VER IRQ forwarders
 
 // DMA to the FIFO is the display-list path (MIi_FIFOCallback). ctrl bit 30 is
 // IRQ-on-complete (the final chunk); a GXFIFO-destined chunk without it relies

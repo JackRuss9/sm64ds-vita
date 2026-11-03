@@ -1,0 +1,36 @@
+diff --git a/port/vita/vita_log.h b/port/vita/vita_log.h
+index 3c369b0..d199b17 100644
+--- a/port/vita/vita_log.h
++++ b/port/vita/vita_log.h
+@@ -10,6 +10,7 @@
+ 
+ #include <stdio.h>    // declarations first, so the macros below never touch them
+ #include <stdarg.h>
++#include <string.h>
+ #ifdef __cplusplus
+ // <cstdio> #undefs printf/fprintf when included. Include it HERE, before the
+ // macros, so the translation unit's own later #include <cstdio> is a no-op.
+@@ -25,7 +26,22 @@ static inline int sm64ds_vfprintf(FILE *stream, const char *fmt, va_list ap)
+ {
+     if (sm64ds_log_file && (stream == stdout || stream == stderr))
+         stream = sm64ds_log_file;
+-    return vfprintf(stream, fmt, ap);
++    // VitaSDK's newlib printf has no C99 `z' length modifier: "%zu" prints
++    // "zu" and shifts every later argument (seen on hardware in gate 4a).
++    // size_t is unsigned int on this 32-bit target, so drop the `z'.
++    char buf[512];
++    size_t o = 0;
++    for (const char *p = fmt; *p && o + 1 < sizeof buf; ++p) {
++        buf[o++] = *p;
++        if (*p != '%') continue;
++        // copy flags/width/precision, then skip a `z' before the conversion
++        while (p[1] && strchr("-+ #0123456789.*", p[1]) && o + 1 < sizeof buf)
++            buf[o++] = *++p;
++        if (p[1] == 'z') ++p;
++        else if (p[1] == '%' && o + 1 < sizeof buf) buf[o++] = *++p;
++    }
++    buf[o] = 0;
++    return vfprintf(stream, buf, ap);
+ }
+ static inline int sm64ds_printf(const char *fmt, ...)
+ {

@@ -33,8 +33,34 @@ constexpr uintptr_t OAM_BASE  = 0x07000000u, OAM_SIZE  = 0x00000800u;  // sprite
 // Bring every region up. Idempotent; false if any fixed mapping failed.
 bool io_init();
 
-// Host pointer to a DS address. Valid only inside a mapped region.
-inline void *host_ptr(uint32_t addr) { return reinterpret_cast<void *>(addr); }
+// Host pointer to a DS address.
+//
+// Default (Windows/Linux PC): the regions are mapped AT their DS addresses, so
+// this is the identity. NTR_RELOCATE_REGIONS (PS Vita): the OS cannot map those
+// low addresses, so each region lives in an ordinary allocation and a DS
+// address in 0x02000000..0x07FFFFFF is translated by its top byte. Anything
+// else -- a real host pointer -- passes through unchanged. On the Vita that is
+// unambiguous: user memory starts at 0x81000000, far above every DS region.
+#if defined(NTR_RELOCATE_REGIONS)
+extern uint8_t *g_region_host[8];    // by DS address >> 24; null = not a region
+extern uint32_t g_region_size[8];
+inline void *host_ptr(uintptr_t addr) {
+    const uintptr_t r = addr >> 24;
+    if (r < 8 && g_region_host[r]) {
+        uint32_t off = static_cast<uint32_t>(addr & 0xFFFFFFu);
+        // Main RAM mirrors every 4MB across 0x02000000..0x02FFFFFF (GBATEK):
+        // the shared work area at 0x027FFxxx is the top of the same RAM.
+        if (r == 2) off &= g_region_size[2] - 1;
+        if (off < g_region_size[r]) return g_region_host[r] + off;
+    }
+    return reinterpret_cast<void *>(addr);
+}
+#else
+inline void *host_ptr(uintptr_t addr) { return reinterpret_cast<void *>(addr); }
+#endif
+template <class T> inline T *host_ptr_t(uintptr_t addr) {
+    return static_cast<T *>(host_ptr(addr));
+}
 
 uint64_t io_read(uint32_t addr, unsigned width);
 void     io_write(uint32_t addr, uint64_t value, unsigned width);

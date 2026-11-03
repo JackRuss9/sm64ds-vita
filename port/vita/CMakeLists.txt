@@ -137,3 +137,67 @@ sm64ds_vita_gate(gate3b SMDS00004 "SM64DS Gate 3b" tests/smoke_fs.cpp
         hal/fs.cpp hal/romfs.cpp
     SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt
     DEFINES SM64DS_FS_ROM)
+
+# ---------------------------------------------------------------------------
+# From gate 4a on: the ntr DS platform layer and hostgen'd src/ copies.
+
+# The DS regions (I/O, palettes, VRAM, OAM, main RAM) cannot be mapped at their
+# real low addresses on the Vita; ntr allocates them and translates DS
+# addresses through host_ptr (see ntr/include/ntr/mmio.h).
+add_library(ntr STATIC
+    ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp
+    ${PORT_DIR}/ntr/ppu.cpp ${PORT_DIR}/ntr/lz77.cpp ${PORT_DIR}/ntr/rt.cpp
+    ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp)
+target_include_directories(ntr PUBLIC "${PORT_DIR}/ntr/include")
+target_compile_definitions(ntr PUBLIC NTR_RELOCATE_REGIONS)
+target_compile_options(ntr PRIVATE ${SM64DS_FLAGS})
+set_source_files_properties(
+    ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp
+    ${PORT_DIR}/ntr/ppu.cpp ${PORT_DIR}/ntr/lz77.cpp ${PORT_DIR}/ntr/rt.cpp
+    ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp
+    PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
+
+# hostgen: MMIO-touching src/ files are built from transformed copies under the
+# build tree (src/ is never edited). Same tool and resolution as the PC build;
+# python3 explicitly, since WSL/Linux usually has no `python`.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+function(sm64ds_vita_hostgen out_var)
+    set(generated "")
+    set(seen "")
+    foreach(sym IN LISTS ARGN)
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} "${REPO_DIR}/tools/srcpath.py" "${sym}"
+            WORKING_DIRECTORY "${REPO_DIR}"
+            RESULT_VARIABLE rc OUTPUT_VARIABLE rel ERROR_VARIABLE err
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT rc EQUAL 0 OR rel MATCHES ": not in src/$")
+            message(FATAL_ERROR "hostgen source resolution failed for ${sym}: ${rel}${err}")
+        endif()
+        list(FIND seen "${rel}" idx)
+        if(NOT idx EQUAL -1)
+            continue()
+        endif()
+        list(APPEND seen "${rel}")
+        string(REGEX REPLACE "\\.(c|cpp)$" ".cpp" out_rel "${rel}")
+        set(out "${CMAKE_BINARY_DIR}/host-src/${out_rel}")
+        add_custom_command(OUTPUT "${out}"
+            COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
+                    --out "${CMAKE_BINARY_DIR}/host-src" ${sym}
+            DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
+            COMMENT "hostgen ${rel}")
+        list(APPEND generated "${out}")
+    endforeach()
+    set(${out_var} "${generated}" PARENT_SCOPE)
+endfunction()
+
+# Gate 4a: the game's display-list pump (MI_SendGXCommandAsync and its DMA/IRQ
+# chain) drives the ntr GX with Mario's model, read from the ROM. Also writes
+# ux0:data/sm64ds/smoke_gx.bmp -- the fitted render, viewable in VitaShell.
+sm64ds_vita_hostgen(GATE4A_GEN
+    func_0205532c func_02055388 func_020553a4 func_02055780
+    MI_SendGXCommandAsync MIi_FIFOCallback MIi_DMACallback OSi_EnterDmaCallback MI_WaitDma)
+sm64ds_vita_gate(gate4a SMDS00005 "SM64DS Gate 4a" tests/smoke_gx.cpp
+    DEFINES SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
+            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+target_sources(gate4a PRIVATE ${GATE4A_GEN})
+target_link_libraries(gate4a PRIVATE ntr)

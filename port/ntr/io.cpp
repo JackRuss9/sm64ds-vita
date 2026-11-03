@@ -7,9 +7,13 @@
 
 #include "ntr/gx.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
-#if defined(_WIN32)
+#if defined(NTR_RELOCATE_REGIONS)
+// plain allocations only: no mmap (the VitaSDK has no <sys/mman.h>)
+#elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
@@ -17,6 +21,12 @@
 #endif
 
 namespace ntr {
+
+#if defined(NTR_RELOCATE_REGIONS)
+uint8_t *g_region_host[8] = {};
+uint32_t g_region_size[8] = {};
+#endif
+
 namespace {
 
 uint8_t *g_io = nullptr;
@@ -99,8 +109,29 @@ void run_sqrt() {
 namespace {
 
 // Reserve one DS region at its real address. Fixed low bases keep (u32)&x exact.
+// Relocated hosts allocate it anywhere and register it with host_ptr instead.
 void *map_fixed(uintptr_t base, size_t size) {
-#if defined(_WIN32)
+#if defined(NTR_RELOCATE_REGIONS)
+    // Over-allocate and align by hand: aligned_alloc is not guaranteed in
+    // every embedded C library. Regions live for the whole process.
+    void *raw = std::malloc(size + 64);
+    void *p = raw ? reinterpret_cast<void *>(
+                        (reinterpret_cast<uintptr_t>(raw) + 63) & ~uintptr_t(63))
+                  : nullptr;
+    if (p) {
+        const uintptr_t at = reinterpret_cast<uintptr_t>(p);
+        // A host block that itself sits inside the DS window would make
+        // host_ptr ambiguous. Impossible on the Vita; refuse it anywhere.
+        if (at < 0x08000000u + size && at + size > 0x02000000u) {
+            std::fprintf(stderr, "ntr: region 0x%08x landed at host %p, inside the "
+                                 "DS address window\n", (unsigned)base, p);
+            std::free(raw);
+            return nullptr;
+        }
+        g_region_host[base >> 24] = static_cast<uint8_t *>(p);
+        g_region_size[base >> 24] = static_cast<uint32_t>(size);
+    }
+#elif defined(_WIN32)
     void *p = VirtualAlloc(reinterpret_cast<void *>(base), size,
                            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 #else
@@ -113,6 +144,13 @@ void *map_fixed(uintptr_t base, size_t size) {
 }
 
 }  // namespace
+
+// C spelling for include/nitro/hw/registers.h's relocated register macros,
+// which C translation units expand too.
+extern "C" void *ntr_host_ptr(unsigned int ds_address) {
+    if (!g_io) io_init();
+    return host_ptr(ds_address);
+}
 
 bool io_init() {
     if (g_io) return true;

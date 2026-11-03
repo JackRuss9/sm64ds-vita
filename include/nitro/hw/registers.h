@@ -85,4 +85,66 @@
 
 #define IRQ_GAME_CARD (1u << 19)
 
+
+/*
+ * Hosts that cannot map the DS regions at their real addresses (the PS Vita
+ * port: NTR_RELOCATE_REGIONS) resolve every address above through
+ * ntr_host_ptr (port/ntr/io.cpp). The DS definitions above are left exactly
+ * as written -- matched functions depend on their spelling -- and are only
+ * replaced here, for those hosts. Generated from the definitions above.
+ */
+#if defined(SM64DS_PLATFORM_PC) && defined(NTR_RELOCATE_REGIONS)
+#ifdef __cplusplus
+extern "C" void *ntr_host_ptr(unsigned int ds_address);
+#else
+void *ntr_host_ptr(unsigned int ds_address);
+#endif
+#undef REG_DISPCNT
+#define REG_DISPCNT (*((volatile u32 *)ntr_host_ptr(0x04000000)))
+#undef REG_DISPCNT_SUB
+#define REG_DISPCNT_SUB (*((volatile u32 *)ntr_host_ptr(0x04001000)))
+#undef REG_BG1CNT
+#define REG_BG1CNT (*((volatile u16 *)ntr_host_ptr(0x0400000a)))
+#undef REG_BG2CNT
+#define REG_BG2CNT (*((volatile u16 *)ntr_host_ptr(0x0400000c)))
+#undef REG_BG3CNT
+#define REG_BG3CNT (*((volatile u16 *)ntr_host_ptr(0x0400000e)))
+#undef REG_DB_BG0CNT
+#define REG_DB_BG0CNT (*((volatile u16 *)ntr_host_ptr(0x04001008)))
+#undef REG_DB_BG1CNT
+#define REG_DB_BG1CNT (*((volatile u16 *)ntr_host_ptr(0x0400100a)))
+#undef REG_DB_BG2CNT
+#define REG_DB_BG2CNT (*((volatile u16 *)ntr_host_ptr(0x0400100c)))
+#undef REG_DB_BG3CNT
+#define REG_DB_BG3CNT (*((volatile u16 *)ntr_host_ptr(0x0400100e)))
+#undef REG_BLDCNT
+#define REG_BLDCNT (*((volatile u16 *)ntr_host_ptr(0x04000050)))
+#undef REG_DB_BLDCNT
+#define REG_DB_BLDCNT (*((volatile u16 *)ntr_host_ptr(0x04001050)))
+#undef REG_VCOUNT
+#define REG_VCOUNT (*((volatile u16 *)ntr_host_ptr(0x04000006)))
+#undef REG_BG0OFS
+#define REG_BG0OFS (*((volatile u32 *)ntr_host_ptr(0x04000010)))
+#undef REG_DB_BG3PA
+#define REG_DB_BG3PA (((volatile u16 *)ntr_host_ptr(0x04001030)))
+#undef REG_TM0CNT_L
+#define REG_TM0CNT_L (*((volatile u16 *)ntr_host_ptr(0x04000100)))
+#undef REG_EXMEMCNT
+#define REG_EXMEMCNT (*((volatile u16 *)ntr_host_ptr(0x04000204)))
+#undef REG_WRAMCNT
+#define REG_WRAMCNT (*((volatile u8  *)ntr_host_ptr(0x04000247)))
+#undef REG_SQRTCNT
+#define REG_SQRTCNT (*((volatile u16 *)ntr_host_ptr(0x040002b0)))
+#undef REG_SQRT_RESULT
+#define REG_SQRT_RESULT (*((volatile s32 *)ntr_host_ptr(0x040002b4)))
+#undef REG_POWCNT1
+#define REG_POWCNT1 (*((volatile u16 *)ntr_host_ptr(0x04000304)))
+#undef REG_DMA_BASE
+#define REG_DMA_BASE (((volatile u32 *)ntr_host_ptr(0x040000b0)))
+#undef REG_IE
+#define REG_IE (*((volatile u32 *)ntr_host_ptr(0x04000210)))
+#undef REG_IF
+#define REG_IF (*((volatile u32 *)ntr_host_ptr(0x04000214)))
+#endif /* NTR_RELOCATE_REGIONS */
+
 #endif /* NITRO_HW_REGISTERS_H */

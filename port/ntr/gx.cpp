@@ -5,6 +5,7 @@
 // and is not a fidelity question for geometry this size.
 
 #include "ntr/gx.h"
+#include "ntr/mmio.h"
 
 #include "ntr/texture.h"
 
@@ -487,16 +488,16 @@ void bind_from_vram() {
         d.height = 8 << ((g_teximage >> 23) & 7);
         d.format = static_cast<int>(fmt);
         d.color0_transparent = (g_teximage >> 29) & 1;
-        d.data = reinterpret_cast<const uint8_t *>(TEX_SLOT_BASE + off);
+        d.data = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + off);
         d.data_len = 0x80000 - static_cast<int32_t>(off);
         // Format 5 keeps its 4x4 palette-index words in slot 1, at half the
         // block offset (GBATEK); the game uploads them right after the blocks.
         if (fmt == 5) {
-            d.index = reinterpret_cast<const uint8_t *>(TEX_SLOT_BASE + 0x20000 + off / 2);
+            d.index = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + 0x20000 + off / 2);
             d.index_len = 0x20000 - static_cast<int32_t>(off / 2);
         }
         const uint32_t pal_off = g_plttbase * (fmt == 2 ? 8u : 16u);
-        d.pal = reinterpret_cast<const uint8_t *>(PLTT_SLOT_BASE + pal_off);
+        d.pal = host_ptr_t<const uint8_t>(PLTT_SLOT_BASE + pal_off);
         d.pal_len = 0x18000 - static_cast<int32_t>(pal_off);
         std::vector<uint32_t> rgba;
         if (!texture_decode(d, rgba)) { gx_bind_texture(nullptr, 0, 0); return; }

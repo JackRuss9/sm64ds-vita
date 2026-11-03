@@ -1,0 +1,620 @@
+diff --git a/include/nitro/hw/registers.h b/include/nitro/hw/registers.h
+index 2948787..03f0dc7 100644
+--- a/include/nitro/hw/registers.h
++++ b/include/nitro/hw/registers.h
+@@ -85,4 +85,66 @@
+ 
+ #define IRQ_GAME_CARD (1u << 19)
+ 
++
++/*
++ * Hosts that cannot map the DS regions at their real addresses (the PS Vita
++ * port: NTR_RELOCATE_REGIONS) resolve every address above through
++ * ntr_host_ptr (port/ntr/io.cpp). The DS definitions above are left exactly
++ * as written -- matched functions depend on their spelling -- and are only
++ * replaced here, for those hosts. Generated from the definitions above.
++ */
++#if defined(SM64DS_PLATFORM_PC) && defined(NTR_RELOCATE_REGIONS)
++#ifdef __cplusplus
++extern "C" void *ntr_host_ptr(unsigned int ds_address);
++#else
++void *ntr_host_ptr(unsigned int ds_address);
++#endif
++#undef REG_DISPCNT
++#define REG_DISPCNT (*((volatile u32 *)ntr_host_ptr(0x04000000)))
++#undef REG_DISPCNT_SUB
++#define REG_DISPCNT_SUB (*((volatile u32 *)ntr_host_ptr(0x04001000)))
++#undef REG_BG1CNT
++#define REG_BG1CNT (*((volatile u16 *)ntr_host_ptr(0x0400000a)))
++#undef REG_BG2CNT
++#define REG_BG2CNT (*((volatile u16 *)ntr_host_ptr(0x0400000c)))
++#undef REG_BG3CNT
++#define REG_BG3CNT (*((volatile u16 *)ntr_host_ptr(0x0400000e)))
++#undef REG_DB_BG0CNT
++#define REG_DB_BG0CNT (*((volatile u16 *)ntr_host_ptr(0x04001008)))
++#undef REG_DB_BG1CNT
++#define REG_DB_BG1CNT (*((volatile u16 *)ntr_host_ptr(0x0400100a)))
++#undef REG_DB_BG2CNT
++#define REG_DB_BG2CNT (*((volatile u16 *)ntr_host_ptr(0x0400100c)))
++#undef REG_DB_BG3CNT
++#define REG_DB_BG3CNT (*((volatile u16 *)ntr_host_ptr(0x0400100e)))
++#undef REG_BLDCNT
++#define REG_BLDCNT (*((volatile u16 *)ntr_host_ptr(0x04000050)))
++#undef REG_DB_BLDCNT
++#define REG_DB_BLDCNT (*((volatile u16 *)ntr_host_ptr(0x04001050)))
++#undef REG_VCOUNT
++#define REG_VCOUNT (*((volatile u16 *)ntr_host_ptr(0x04000006)))
++#undef REG_BG0OFS
++#define REG_BG0OFS (*((volatile u32 *)ntr_host_ptr(0x04000010)))
++#undef REG_DB_BG3PA
++#define REG_DB_BG3PA (((volatile u16 *)ntr_host_ptr(0x04001030)))
++#undef REG_TM0CNT_L
++#define REG_TM0CNT_L (*((volatile u16 *)ntr_host_ptr(0x04000100)))
++#undef REG_EXMEMCNT
++#define REG_EXMEMCNT (*((volatile u16 *)ntr_host_ptr(0x04000204)))
++#undef REG_WRAMCNT
++#define REG_WRAMCNT (*((volatile u8  *)ntr_host_ptr(0x04000247)))
++#undef REG_SQRTCNT
++#define REG_SQRTCNT (*((volatile u16 *)ntr_host_ptr(0x040002b0)))
++#undef REG_SQRT_RESULT
++#define REG_SQRT_RESULT (*((volatile s32 *)ntr_host_ptr(0x040002b4)))
++#undef REG_POWCNT1
++#define REG_POWCNT1 (*((volatile u16 *)ntr_host_ptr(0x04000304)))
++#undef REG_DMA_BASE
++#define REG_DMA_BASE (((volatile u32 *)ntr_host_ptr(0x040000b0)))
++#undef REG_IE
++#define REG_IE (*((volatile u32 *)ntr_host_ptr(0x04000210)))
++#undef REG_IF
++#define REG_IF (*((volatile u32 *)ntr_host_ptr(0x04000214)))
++#endif /* NTR_RELOCATE_REGIONS */
++
+ #endif /* NITRO_HW_REGISTERS_H */
+diff --git a/port/ntr/gx.cpp b/port/ntr/gx.cpp
+index 3ffd520..9641468 100644
+--- a/port/ntr/gx.cpp
++++ b/port/ntr/gx.cpp
+@@ -5,6 +5,7 @@
+ // and is not a fidelity question for geometry this size.
+ 
+ #include "ntr/gx.h"
++#include "ntr/mmio.h"
+ 
+ #include "ntr/texture.h"
+ 
+@@ -487,16 +488,16 @@ void bind_from_vram() {
+         d.height = 8 << ((g_teximage >> 23) & 7);
+         d.format = static_cast<int>(fmt);
+         d.color0_transparent = (g_teximage >> 29) & 1;
+-        d.data = reinterpret_cast<const uint8_t *>(TEX_SLOT_BASE + off);
++        d.data = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + off);
+         d.data_len = 0x80000 - static_cast<int32_t>(off);
+         // Format 5 keeps its 4x4 palette-index words in slot 1, at half the
+         // block offset (GBATEK); the game uploads them right after the blocks.
+         if (fmt == 5) {
+-            d.index = reinterpret_cast<const uint8_t *>(TEX_SLOT_BASE + 0x20000 + off / 2);
++            d.index = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + 0x20000 + off / 2);
+             d.index_len = 0x20000 - static_cast<int32_t>(off / 2);
+         }
+         const uint32_t pal_off = g_plttbase * (fmt == 2 ? 8u : 16u);
+-        d.pal = reinterpret_cast<const uint8_t *>(PLTT_SLOT_BASE + pal_off);
++        d.pal = host_ptr_t<const uint8_t>(PLTT_SLOT_BASE + pal_off);
+         d.pal_len = 0x18000 - static_cast<int32_t>(pal_off);
+         std::vector<uint32_t> rgba;
+         if (!texture_decode(d, rgba)) { gx_bind_texture(nullptr, 0, 0); return; }
+diff --git a/port/ntr/include/ntr/mmio.h b/port/ntr/include/ntr/mmio.h
+index a2927f1..5d30e30 100644
+--- a/port/ntr/include/ntr/mmio.h
++++ b/port/ntr/include/ntr/mmio.h
+@@ -33,8 +33,34 @@ constexpr uintptr_t OAM_BASE  = 0x07000000u, OAM_SIZE  = 0x00000800u;  // sprite
+ // Bring every region up. Idempotent; false if any fixed mapping failed.
+ bool io_init();
+ 
+-// Host pointer to a DS address. Valid only inside a mapped region.
+-inline void *host_ptr(uint32_t addr) { return reinterpret_cast<void *>(addr); }
++// Host pointer to a DS address.
++//
++// Default (Windows/Linux PC): the regions are mapped AT their DS addresses, so
++// this is the identity. NTR_RELOCATE_REGIONS (PS Vita): the OS cannot map those
++// low addresses, so each region lives in an ordinary allocation and a DS
++// address in 0x02000000..0x07FFFFFF is translated by its top byte. Anything
++// else -- a real host pointer -- passes through unchanged. On the Vita that is
++// unambiguous: user memory starts at 0x81000000, far above every DS region.
++#if defined(NTR_RELOCATE_REGIONS)
++extern uint8_t *g_region_host[8];    // by DS address >> 24; null = not a region
++extern uint32_t g_region_size[8];
++inline void *host_ptr(uintptr_t addr) {
++    const uintptr_t r = addr >> 24;
++    if (r < 8 && g_region_host[r]) {
++        uint32_t off = static_cast<uint32_t>(addr & 0xFFFFFFu);
++        // Main RAM mirrors every 4MB across 0x02000000..0x02FFFFFF (GBATEK):
++        // the shared work area at 0x027FFxxx is the top of the same RAM.
++        if (r == 2) off &= g_region_size[2] - 1;
++        if (off < g_region_size[r]) return g_region_host[r] + off;
++    }
++    return reinterpret_cast<void *>(addr);
++}
++#else
++inline void *host_ptr(uintptr_t addr) { return reinterpret_cast<void *>(addr); }
++#endif
++template <class T> inline T *host_ptr_t(uintptr_t addr) {
++    return static_cast<T *>(host_ptr(addr));
++}
+ 
+ uint64_t io_read(uint32_t addr, unsigned width);
+ void     io_write(uint32_t addr, uint64_t value, unsigned width);
+diff --git a/port/ntr/io.cpp b/port/ntr/io.cpp
+index b4e4adc..25f8244 100644
+--- a/port/ntr/io.cpp
++++ b/port/ntr/io.cpp
+@@ -7,6 +7,8 @@
+ 
+ #include "ntr/gx.h"
+ 
++#include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ 
+ #if defined(_WIN32)
+@@ -17,6 +19,12 @@
+ #endif
+ 
+ namespace ntr {
++
++#if defined(NTR_RELOCATE_REGIONS)
++uint8_t *g_region_host[8] = {};
++uint32_t g_region_size[8] = {};
++#endif
++
+ namespace {
+ 
+ uint8_t *g_io = nullptr;
+@@ -99,8 +107,24 @@ void run_sqrt() {
+ namespace {
+ 
+ // Reserve one DS region at its real address. Fixed low bases keep (u32)&x exact.
++// Relocated hosts allocate it anywhere and register it with host_ptr instead.
+ void *map_fixed(uintptr_t base, size_t size) {
+-#if defined(_WIN32)
++#if defined(NTR_RELOCATE_REGIONS)
++    void *p = std::aligned_alloc(64, (size + 63) & ~size_t(63));
++    if (p) {
++        const uintptr_t at = reinterpret_cast<uintptr_t>(p);
++        // A host block that itself sits inside the DS window would make
++        // host_ptr ambiguous. Impossible on the Vita; refuse it anywhere.
++        if (at < 0x08000000u + size && at + size > 0x02000000u) {
++            std::fprintf(stderr, "ntr: region 0x%08x landed at host %p, inside the "
++                                 "DS address window\n", (unsigned)base, p);
++            std::free(p);
++            return nullptr;
++        }
++        g_region_host[base >> 24] = static_cast<uint8_t *>(p);
++        g_region_size[base >> 24] = static_cast<uint32_t>(size);
++    }
++#elif defined(_WIN32)
+     void *p = VirtualAlloc(reinterpret_cast<void *>(base), size,
+                            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+ #else
+@@ -114,6 +138,13 @@ void *map_fixed(uintptr_t base, size_t size) {
+ 
+ }  // namespace
+ 
++// C spelling for include/nitro/hw/registers.h's relocated register macros,
++// which C translation units expand too.
++extern "C" void *ntr_host_ptr(unsigned int ds_address) {
++    if (!g_io) io_init();
++    return host_ptr(ds_address);
++}
++
+ bool io_init() {
+     if (g_io) return true;
+     struct { uintptr_t base; size_t size; } regions[] = {
+diff --git a/port/ntr/ppu.cpp b/port/ntr/ppu.cpp
+index c839a13..2992a29 100644
+--- a/port/ntr/ppu.cpp
++++ b/port/ntr/ppu.cpp
+@@ -34,8 +34,8 @@ constexpr EngineMap kEngines[2] = {
+     {0x04001000u, 0x06200000u, 0x05000400u, false},
+ };
+ 
+-inline uint16_t rd16(uint32_t a) { return *reinterpret_cast<volatile uint16_t *>(a); }
+-inline uint32_t rd32(uint32_t a) { return *reinterpret_cast<volatile uint32_t *>(a); }
++inline uint16_t rd16(uint32_t a) { return *host_ptr_t<volatile uint16_t>(a); }
++inline uint32_t rd32(uint32_t a) { return *host_ptr_t<volatile uint32_t>(a); }
+ 
+ // DS palettes are BGR555.
+ inline uint32_t bgr555(uint16_t c) {
+@@ -105,11 +105,11 @@ bool sample_bg(const EngineMap &em, const BgConfig &c, int x, int y, uint32_t &o
+ 
+     uint32_t index;
+     if (c.bpp8) {
+-        index = *reinterpret_cast<volatile uint8_t *>(c.chars + tile * 64 + fy * 8 + fx);
++        index = *host_ptr_t<volatile uint8_t>(c.chars + tile * 64 + fy * 8 + fx);
+         if (index == 0) return false;
+     } else {
+         const uint8_t pair =
+-            *reinterpret_cast<volatile uint8_t *>(c.chars + tile * 32 + fy * 4 + (fx >> 1));
++            *host_ptr_t<volatile uint8_t>(c.chars + tile * 32 + fy * 4 + (fx >> 1));
+         index = (fx & 1) ? (pair >> 4) : (pair & 0xF);
+         if (index == 0) return false;
+         index += ((se >> 12) & 0xF) * 16;
+@@ -230,13 +230,13 @@ void ppu_scanout_obj(Engine eng, Framebuffer &fb) {
+                 if (c256) {
+                     const uint32_t addr = obj_vram + tile * boundary
+                                           + tno * 64u + fy * 8u + fx;
+-                    index = *reinterpret_cast<volatile uint8_t *>(addr);
++                    index = *host_ptr_t<volatile uint8_t>(addr);
+                     if (!index) continue;
+                     fb.px[py][px] = bgr555(rd16(obj_pltt + index * 2u));
+                 } else {
+                     const uint32_t addr = obj_vram + tile * boundary
+                                           + tno * 32u + fy * 4u + fx / 2;
+-                    const uint8_t b = *reinterpret_cast<volatile uint8_t *>(addr);
++                    const uint8_t b = *host_ptr_t<volatile uint8_t>(addr);
+                     index = (fx & 1) ? (b >> 4) : (b & 0xF);
+                     if (!index) continue;
+                     fb.px[py][px] = bgr555(rd16(obj_pltt + (pal * 16u + index) * 2u));
+diff --git a/port/ntr/rt.cpp b/port/ntr/rt.cpp
+index ad09a7b..0e72452 100644
+--- a/port/ntr/rt.cpp
++++ b/port/ntr/rt.cpp
+@@ -18,10 +18,10 @@ constexpr uint32_t REG_IF = 0x04000214;
+ constexpr uint32_t REG_VCOUNT = 0x04000006;
+ 
+ inline volatile uint32_t &reg32(uint32_t a) {
+-    return *reinterpret_cast<volatile uint32_t *>(a);
++    return *static_cast<volatile uint32_t *>(host_ptr(a));
+ }
+ inline volatile uint16_t &reg16(uint32_t a) {
+-    return *reinterpret_cast<volatile uint16_t *>(a);
++    return *static_cast<volatile uint16_t *>(host_ptr(a));
+ }
+ 
+ struct Runtime {
+diff --git a/port/ntr/runtime.cpp b/port/ntr/runtime.cpp
+index 4b23e6c..f95c5ec 100644
+--- a/port/ntr/runtime.cpp
++++ b/port/ntr/runtime.cpp
+@@ -15,6 +15,7 @@
+ #include "ntr/rt.h"
+ 
+ #include "ntr/gx.h"
++#include "ntr/mmio.h"
+ 
+ #include <cstring>
+ 
+@@ -46,17 +47,24 @@ void WaitByLoop(void) {}
+ 
+ // swi 0x0B/0x0C. The DS BIOS copies in 4- or 32-byte units, with an optional
+ // fixed-source fill mode; bit 24 selects fill, bit 26 selects 32-bit units.
++// A pointer the game holds may be a DS address (a VRAM bank, the palette or
++// OAM) rather than host memory; resolve it before touching memory. Identity
++// where the regions are mapped at their real addresses.
++static inline void *ds(const void *p) {
++    return ntr::host_ptr(reinterpret_cast<uintptr_t>(p));
++}
++
+ extern "C" void CpuSet(const void *src, void *dst, unsigned int ctrl) {
+     const unsigned int count = ctrl & 0x1FFFFF;
+     const bool fill = (ctrl >> 24) & 1;
+     const bool word = (ctrl >> 26) & 1;
+     if (word) {
+-        const uint32_t *s = static_cast<const uint32_t *>(src);
+-        uint32_t *d = static_cast<uint32_t *>(dst);
++        const uint32_t *s = static_cast<const uint32_t *>(ds(src));
++        uint32_t *d = static_cast<uint32_t *>(ds(dst));
+         for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
+     } else {
+-        const uint16_t *s = static_cast<const uint16_t *>(src);
+-        uint16_t *d = static_cast<uint16_t *>(dst);
++        const uint16_t *s = static_cast<const uint16_t *>(ds(src));
++        uint16_t *d = static_cast<uint16_t *>(ds(dst));
+         for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
+     }
+ }
+@@ -64,8 +72,8 @@ extern "C" void CpuSet(const void *src, void *dst, unsigned int ctrl) {
+ extern "C" void CpuFastSet(const void *src, void *dst, unsigned int ctrl) {
+     const unsigned int count = ctrl & 0x1FFFFF;
+     const bool fill = (ctrl >> 24) & 1;
+-    const uint32_t *s = static_cast<const uint32_t *>(src);
+-    uint32_t *d = static_cast<uint32_t *>(dst);
++    const uint32_t *s = static_cast<const uint32_t *>(ds(src));
++    uint32_t *d = static_cast<uint32_t *>(ds(dst));
+     for (unsigned int i = 0; i < count; ++i) d[i] = fill ? *s : s[i];
+ }
+ 
+@@ -87,9 +95,12 @@ constexpr uint32_t GXFIFO = 0x04000400u;
+ 
+ void copy_words(const uint32_t *src, uint32_t *dst, int n) {
+     if (reinterpret_cast<uintptr_t>(dst) == GXFIFO) {
+-        for (int i = 0; i < n; ++i) ntr::gx_write_fifo(src[i]);
++        const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
++        for (int i = 0; i < n; ++i) ntr::gx_write_fifo(s[i]);
+     } else {
+-        for (int i = 0; i < n; ++i) dst[i] = src[i];
++        const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
++        uint32_t *d = static_cast<uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
++        for (int i = 0; i < n; ++i) d[i] = s[i];
+     }
+ }
+ 
+@@ -109,7 +120,8 @@ extern "C" void Copy48BytesFixed(int *src, int *dst) {
+     if (reinterpret_cast<uintptr_t>(dst) == 0x04000400u) {
+         for (int i = 0; i < 12; ++i) ntr::gx_write_fifo(static_cast<uint32_t>(src[i]));
+     } else {
+-        for (int i = 0; i < 12; ++i) dst[i] = src[i];
++        int *d = static_cast<int *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
++        for (int i = 0; i < 12; ++i) d[i] = src[i];
+     }
+ }
+ 
+@@ -160,6 +172,9 @@ extern "C" unsigned _ZN3IRQ11DisableIRQsEj(unsigned mask) {
+ }
+ extern "C" void _ZN3IRQ15ClearInterruptsEj(unsigned) {}
+ 
++// MSVC-only: under GCC/Clang (Itanium ABI) the extern "C" spellings above
++// already ARE these C++ symbols, so the forwarders would redefine them.
++#if defined(_MSC_VER)
+ // The same registry under include/IRQ.h's real names. Decomp files that call
+ // IRQ::GetIRQHandler and friends through that header (MI_SendGXCommandAsync) link
+ // against these C++-linkage definitions; files that still declare the mangled
+@@ -181,6 +196,7 @@ unsigned ClearInterrupts(unsigned mask) {
+ unsigned Disable() { return _ZN3IRQ7DisableEv(); }
+ unsigned Restore(unsigned prev) { return _ZN3IRQ7RestoreEj(prev); }
+ }  // namespace IRQ
++#endif  // _MSC_VER IRQ forwarders
+ 
+ // DMA to the FIFO is the display-list path (MIi_FIFOCallback). ctrl bit 30 is
+ // IRQ-on-complete (the final chunk); a GXFIFO-destined chunk without it relies
+diff --git a/port/tests/smoke_gx.cpp b/port/tests/smoke_gx.cpp
+index 889def6..e9a3ce4 100644
+--- a/port/tests/smoke_gx.cpp
++++ b/port/tests/smoke_gx.cpp
+@@ -119,6 +119,14 @@ int main(void)
+ {
+     if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
+ 
++#if defined(SM64DS_ROM_PATH)
++    /* console builds: the assets come straight from the user's cartridge dump */
++    const char *rom = getenv("SM64DS_ROM") ? getenv("SM64DS_ROM") : SM64DS_ROM_PATH;
++    if (!ntr::fs_mount_rom(rom)) {
++        fprintf(stderr, "no ROM at %s (copy your own EUR dump there)\n", rom);
++        return 2;
++    }
++#else
+     char root[512];
+     snprintf(root, sizeof root, "%s/extracted/dsd/files",
+              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
+@@ -127,6 +135,7 @@ int main(void)
+         fprintf(stderr, "no assets at %s\n", root);
+         return 2;
+     }
++#endif
+ 
+     ntr::BmdModel m;
+     CHECK(ntr::bmd_load_path("data/player/b_mario_all.bmd", m));
+@@ -167,7 +176,11 @@ int main(void)
+     printf("  pixels covered: %d (%.1f%%)\n", drawn,
+            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
+     CHECK(drawn > 500);
++#if defined(SM64DS_OUT_DIR)
++    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_gx.bmp", fb);
++#else
+     ntr::ppu_write_bmp("smoke_gx.bmp", fb);
++#endif
+ 
+     if (g_failures) {
+         fprintf(stderr, "smoke_gx: %d FAILURE(S)\n", g_failures);
+diff --git a/port/tools/hostgen.py b/port/tools/hostgen.py
+index ab3d6d6..7aef31c 100644
+--- a/port/tools/hostgen.py
++++ b/port/tools/hostgen.py
+@@ -35,7 +35,7 @@ import sys
+ # (they resolve through the mapped latch window, which is correct for reads).
+ MMIO_DEREF = re.compile(
+     r"\*\s*(\()?\s*\(\s*(?:volatile\s+)?"
+-    r"((?:unsigned|signed|long|short|int|char|u8|u16|u32|u64|s8|s16|s32|s64)"
++    r"((?:unsigned|signed|long|short|int|char|v?[us](?:8|16|32|64))"
+     r"(?:\s+(?:unsigned|signed|long|short|int|char))*)"
+     r"\s*\*\s*\)\s*(0x0?4[0-9A-Fa-f]{6})\b(?(1)\s*\))"
+ )
+@@ -58,12 +58,37 @@ VOIDPP_ARITH = re.compile(r"\(\s*\*\s*\(\s*\(\s*void\s*\*\*\s*\)\s*([^()]+?)\s*\
+ ATTRIBUTE = re.compile(r"__attribute__\s*\(\((?:[^()]|\([^()]*\))*\)\)")
+ 
+ 
++# Any OTHER cast of a literal DS address to a pointer -- `(u16 *)0x06800000`,
++# `(vu32 *)0x040000b0` held in a pointer for computed access, main-RAM shared
++# words -- becomes a host_ptr() lookup. Identity on hosts that map the regions
++# at their real addresses (Windows/Linux PC); a translation where the OS cannot
++# (the PS Vita, NTR_RELOCATE_REGIONS). Runs after MMIO_DEREF, so literal
++# register derefs keep their side-effect proxy.
++DS_PTR_CAST = re.compile(
++    r"\(\s*((?:const\s+)?(?:volatile\s+)?"
++    r"(?:unsigned|signed|long|short|int|char|void|v?[us](?:8|16|32|64)|[A-Z]\w*|\w+_t)"
++    r"(?:\s+(?:unsigned|signed|long|short|int|char))*"
++    r"\s*\*+)\s*\)\s*(0x0?[2-7][0-9A-Fa-f]{6})\b"
++)
++
++
++def _proxy_type(t):
++    """The SDK's vu32/vs16... are `volatile` typedefs. The proxy already routes
++    every access through the I/O layer, so it takes the plain type: vu32 -> u32.
++    These were missed before, and on a fixed-map host silently became raw
++    memory accesses -- reads worked, write-triggered side effects did not."""
++    t = t.strip()
++    return t[1:] if re.fullmatch(r"v[us](?:8|16|32|64)", t) else t
++
++
+ def transform(text):
+     """Return (new_text, n_rewrites)."""
+     text, n3 = ATTRIBUTE.subn("", text)
+     text, n2 = VOIDPP_ARITH.subn(r"((*((char **) \1))) +", text)
+-    text, n1 = MMIO_DEREF.subn(lambda m: f"NTR_MMIO({m.group(2).strip()}, {m.group(3)})", text)
+-    return text, n1 + n2 + n3
++    text, n1 = MMIO_DEREF.subn(lambda m: f"NTR_MMIO({_proxy_type(m.group(2))}, {m.group(3)})", text)
++    text, n4 = DS_PTR_CAST.subn(
++        lambda m: f"(({m.group(1)})::ntr::host_ptr({m.group(2)}))", text)
++    return text, n1 + n2 + n3 + n4
+ 
+ 
+ # ~110 files in the decomp are ARM assembly blocks -- CP15 cache ops, the CRT0,
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index 347202f..f9bbaba 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -137,3 +137,67 @@ sm64ds_vita_gate(gate3b SMDS00004 "SM64DS Gate 3b" tests/smoke_fs.cpp
+         hal/fs.cpp hal/romfs.cpp
+     SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt
+     DEFINES SM64DS_FS_ROM)
++
++# ---------------------------------------------------------------------------
++# From gate 4a on: the ntr DS platform layer and hostgen'd src/ copies.
++
++# The DS regions (I/O, palettes, VRAM, OAM, main RAM) cannot be mapped at their
++# real low addresses on the Vita; ntr allocates them and translates DS
++# addresses through host_ptr (see ntr/include/ntr/mmio.h).
++add_library(ntr STATIC
++    ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp
++    ${PORT_DIR}/ntr/ppu.cpp ${PORT_DIR}/ntr/lz77.cpp ${PORT_DIR}/ntr/rt.cpp
++    ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp)
++target_include_directories(ntr PUBLIC "${PORT_DIR}/ntr/include")
++target_compile_definitions(ntr PUBLIC NTR_RELOCATE_REGIONS)
++target_compile_options(ntr PRIVATE ${SM64DS_FLAGS})
++set_source_files_properties(
++    ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp
++    ${PORT_DIR}/ntr/ppu.cpp ${PORT_DIR}/ntr/lz77.cpp ${PORT_DIR}/ntr/rt.cpp
++    ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp
++    PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
++
++# hostgen: MMIO-touching src/ files are built from transformed copies under the
++# build tree (src/ is never edited). Same tool and resolution as the PC build;
++# python3 explicitly, since WSL/Linux usually has no `python`.
++find_package(Python3 REQUIRED COMPONENTS Interpreter)
++function(sm64ds_vita_hostgen out_var)
++    set(generated "")
++    set(seen "")
++    foreach(sym IN LISTS ARGN)
++        execute_process(
++            COMMAND ${Python3_EXECUTABLE} "${REPO_DIR}/tools/srcpath.py" "${sym}"
++            WORKING_DIRECTORY "${REPO_DIR}"
++            RESULT_VARIABLE rc OUTPUT_VARIABLE rel ERROR_VARIABLE err
++            OUTPUT_STRIP_TRAILING_WHITESPACE)
++        if(NOT rc EQUAL 0 OR rel MATCHES ": not in src/$")
++            message(FATAL_ERROR "hostgen source resolution failed for ${sym}: ${rel}${err}")
++        endif()
++        list(FIND seen "${rel}" idx)
++        if(NOT idx EQUAL -1)
++            continue()
++        endif()
++        list(APPEND seen "${rel}")
++        string(REGEX REPLACE "\\.(c|cpp)$" ".cpp" out_rel "${rel}")
++        set(out "${CMAKE_BINARY_DIR}/host-src/${out_rel}")
++        add_custom_command(OUTPUT "${out}"
++            COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
++                    --out "${CMAKE_BINARY_DIR}/host-src" ${sym}
++            DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
++            COMMENT "hostgen ${rel}")
++        list(APPEND generated "${out}")
++    endforeach()
++    set(${out_var} "${generated}" PARENT_SCOPE)
++endfunction()
++
++# Gate 4a: the game's display-list pump (MI_SendGXCommandAsync and its DMA/IRQ
++# chain) drives the ntr GX with Mario's model, read from the ROM. Also writes
++# ux0:data/sm64ds/smoke_gx.bmp -- the fitted render, viewable in VitaShell.
++sm64ds_vita_hostgen(GATE4A_GEN
++    func_0205532c func_02055388 func_020553a4 func_02055780
++    MI_SendGXCommandAsync MIi_FIFOCallback MIi_DMACallback OSi_EnterDmaCallback MI_WaitDma)
++sm64ds_vita_gate(gate4a SMDS00005 "SM64DS Gate 4a" tests/smoke_gx.cpp
++    DEFINES SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate4a PRIVATE ${GATE4A_GEN})
++target_link_libraries(gate4a PRIVATE ntr)
+diff --git a/port/vita/vita_log.h b/port/vita/vita_log.h
+index 9b30967..3c369b0 100644
+--- a/port/vita/vita_log.h
++++ b/port/vita/vita_log.h
+@@ -10,6 +10,11 @@
+ 
+ #include <stdio.h>    // declarations first, so the macros below never touch them
+ #include <stdarg.h>
++#ifdef __cplusplus
++// <cstdio> #undefs printf/fprintf when included. Include it HERE, before the
++// macros, so the translation unit's own later #include <cstdio> is a no-op.
++#include <cstdio>
++#endif
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -38,6 +43,11 @@ static inline int sm64ds_fprintf(FILE *stream, const char *fmt, ...)
+ }
+ #endif
+ 
++#ifdef __cplusplus
++// Code that spells std::printf / std::fprintf expands to std::sm64ds_*.
++namespace std { using ::sm64ds_printf; using ::sm64ds_fprintf; }
++#endif
++
+ #define printf  sm64ds_printf
+ #define fprintf sm64ds_fprintf
+ 
+diff --git a/port/vita/vita_main.cpp b/port/vita/vita_main.cpp
+index a7d3eac..d0b9e13 100644
+--- a/port/vita/vita_main.cpp
++++ b/port/vita/vita_main.cpp
+@@ -28,6 +28,12 @@
+ #endif
+ 
+ int sm64ds_test_main();   // the gate's renamed main(void)
++
++// VitaSDK's newlib reads this to size the C heap (malloc). From gate 4a on the
++// gates hold the DS regions (~14 MB) plus the whole ROM image (16 MB) at once,
++// so the size is set explicitly instead of trusting the default. Ignored by
++// other C libraries (desktop/QEMU test builds).
++extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
+ extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
+ 
+ static void append_result(const char *line_status, int rc)
+diff --git a/src/engine/gx/G3X.cpp b/src/engine/gx/G3X.cpp
+index 5439f9d..1ea6b55 100644
+--- a/src/engine/gx/G3X.cpp
++++ b/src/engine/gx/G3X.cpp
+@@ -48,7 +48,7 @@ void func_020557b4(void);
+ void func_0205583c(void);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ 
+ // G3X_Init
+ extern "C" void func_0205583c(void) {
+@@ -103,7 +103,7 @@ extern "C" void func_02055780(void) {
+         ;
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ 
+ // G3X_InitMtxStack
+ extern "C" void func_020556d0(void) {
+diff --git a/src/engine/os/OS_Interrupt.cpp b/src/engine/os/OS_Interrupt.cpp
+index d501f85..099ae6b 100644
+--- a/src/engine/os/OS_Interrupt.cpp
++++ b/src/engine/os/OS_Interrupt.cpp
+@@ -36,7 +36,7 @@ void OSi_EnterDmaCallback(u32 idx, u32 handler, u32 arg);
+ void OSi_EnterTimerCallback(u32 idx, u32 handler, u32 arg);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ 
+ // OS_InitThreadQueue(&OSi_IrqThreadQueue): this SDK's thread queue is a u16
+ // mask of thread ids, and the IRQ thread queue is the first halfword of DTCM.
+@@ -98,7 +98,7 @@ extern "C" void OSi_EnterDmaCallback(u32 idx, u32 handler, u32 arg) {
+     data_020a60c4[idx].enabled = prev_ie & (1u << (idx + 8));
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ 
+ // Installs a timer's overflow callback and enables its interrupt.
+ extern "C" void OSi_EnterTimerCallback(u32 idx, u32 handler, u32 arg) {

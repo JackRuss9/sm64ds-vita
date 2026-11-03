@@ -119,6 +119,14 @@ int main(void)
 {
     if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
 
+#if defined(SM64DS_ROM_PATH)
+    /* console builds: the assets come straight from the user's cartridge dump */
+    const char *rom = getenv("SM64DS_ROM") ? getenv("SM64DS_ROM") : SM64DS_ROM_PATH;
+    if (!ntr::fs_mount_rom(rom)) {
+        fprintf(stderr, "no ROM at %s (copy your own EUR dump there)\n", rom);
+        return 2;
+    }
+#else
     char root[512];
     snprintf(root, sizeof root, "%s/extracted/dsd/files",
              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
@@ -127,6 +135,7 @@ int main(void)
         fprintf(stderr, "no assets at %s\n", root);
         return 2;
     }
+#endif
 
     ntr::BmdModel m;
     CHECK(ntr::bmd_load_path("data/player/b_mario_all.bmd", m));
@@ -167,7 +176,11 @@ int main(void)
     printf("  pixels covered: %d (%.1f%%)\n", drawn,
            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
     CHECK(drawn > 500);
+#if defined(SM64DS_OUT_DIR)
+    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_gx.bmp", fb);
+#else
     ntr::ppu_write_bmp("smoke_gx.bmp", fb);
+#endif
 
     if (g_failures) {
         fprintf(stderr, "smoke_gx: %d FAILURE(S)\n", g_failures);

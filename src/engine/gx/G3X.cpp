@@ -48,7 +48,7 @@ void func_020557b4(void);
 void func_0205583c(void);
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 
 // G3X_Init
 extern "C" void func_0205583c(void) {
@@ -103,7 +103,7 @@ extern "C" void func_02055780(void) {
         ;
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 
 // G3X_InitMtxStack
 extern "C" void func_020556d0(void) {

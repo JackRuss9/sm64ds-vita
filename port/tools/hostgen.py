@@ -35,7 +35,7 @@ import sys
 # (they resolve through the mapped latch window, which is correct for reads).
 MMIO_DEREF = re.compile(
     r"\*\s*(\()?\s*\(\s*(?:volatile\s+)?"
-    r"((?:unsigned|signed|long|short|int|char|u8|u16|u32|u64|s8|s16|s32|s64)"
+    r"((?:unsigned|signed|long|short|int|char|v?[us](?:8|16|32|64))"
     r"(?:\s+(?:unsigned|signed|long|short|int|char))*)"
     r"\s*\*\s*\)\s*(0x0?4[0-9A-Fa-f]{6})\b(?(1)\s*\))"
 )
@@ -58,12 +58,37 @@ VOIDPP_ARITH = re.compile(r"\(\s*\*\s*\(\s*\(\s*void\s*\*\*\s*\)\s*([^()]+?)\s*\
 ATTRIBUTE = re.compile(r"__attribute__\s*\(\((?:[^()]|\([^()]*\))*\)\)")
 
 
+# Any OTHER cast of a literal DS address to a pointer -- `(u16 *)0x06800000`,
+# `(vu32 *)0x040000b0` held in a pointer for computed access, main-RAM shared
+# words -- becomes a host_ptr() lookup. Identity on hosts that map the regions
+# at their real addresses (Windows/Linux PC); a translation where the OS cannot
+# (the PS Vita, NTR_RELOCATE_REGIONS). Runs after MMIO_DEREF, so literal
+# register derefs keep their side-effect proxy.
+DS_PTR_CAST = re.compile(
+    r"\(\s*((?:const\s+)?(?:volatile\s+)?"
+    r"(?:unsigned|signed|long|short|int|char|void|v?[us](?:8|16|32|64)|[A-Z]\w*|\w+_t)"
+    r"(?:\s+(?:unsigned|signed|long|short|int|char))*"
+    r"\s*\*+)\s*\)\s*(0x0?[2-7][0-9A-Fa-f]{6})\b"
+)
+
+
+def _proxy_type(t):
+    """The SDK's vu32/vs16... are `volatile` typedefs. The proxy already routes
+    every access through the I/O layer, so it takes the plain type: vu32 -> u32.
+    These were missed before, and on a fixed-map host silently became raw
+    memory accesses -- reads worked, write-triggered side effects did not."""
+    t = t.strip()
+    return t[1:] if re.fullmatch(r"v[us](?:8|16|32|64)", t) else t
+
+
 def transform(text):
     """Return (new_text, n_rewrites)."""
     text, n3 = ATTRIBUTE.subn("", text)
     text, n2 = VOIDPP_ARITH.subn(r"((*((char **) \1))) +", text)
-    text, n1 = MMIO_DEREF.subn(lambda m: f"NTR_MMIO({m.group(2).strip()}, {m.group(3)})", text)
-    return text, n1 + n2 + n3
+    text, n1 = MMIO_DEREF.subn(lambda m: f"NTR_MMIO({_proxy_type(m.group(2))}, {m.group(3)})", text)
+    text, n4 = DS_PTR_CAST.subn(
+        lambda m: f"(({m.group(1)})::ntr::host_ptr({m.group(2)}))", text)
+    return text, n1 + n2 + n3 + n4
 
 
 # ~110 files in the decomp are ARM assembly blocks -- CP15 cache ops, the CRT0,

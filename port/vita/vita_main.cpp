@@ -28,6 +28,12 @@
 #endif
 
 int sm64ds_test_main();   // the gate's renamed main(void)
+
+// VitaSDK's newlib reads this to size the C heap (malloc). From gate 4a on the
+// gates hold the DS regions (~14 MB) plus the whole ROM image (16 MB) at once,
+// so the size is set explicitly instead of trusting the default. Ignored by
+// other C libraries (desktop/QEMU test builds).
+extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
 extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
 
 static void append_result(const char *line_status, int rc)

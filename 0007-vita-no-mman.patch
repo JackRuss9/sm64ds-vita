@@ -1,0 +1,38 @@
+diff --git a/port/ntr/io.cpp b/port/ntr/io.cpp
+index 25f8244..d8cdcd6 100644
+--- a/port/ntr/io.cpp
++++ b/port/ntr/io.cpp
+@@ -11,7 +11,9 @@
+ #include <cstdlib>
+ #include <cstring>
+ 
+-#if defined(_WIN32)
++#if defined(NTR_RELOCATE_REGIONS)
++// plain allocations only: no mmap (the VitaSDK has no <sys/mman.h>)
++#elif defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #else
+@@ -110,7 +112,12 @@ namespace {
+ // Relocated hosts allocate it anywhere and register it with host_ptr instead.
+ void *map_fixed(uintptr_t base, size_t size) {
+ #if defined(NTR_RELOCATE_REGIONS)
+-    void *p = std::aligned_alloc(64, (size + 63) & ~size_t(63));
++    // Over-allocate and align by hand: aligned_alloc is not guaranteed in
++    // every embedded C library. Regions live for the whole process.
++    void *raw = std::malloc(size + 64);
++    void *p = raw ? reinterpret_cast<void *>(
++                        (reinterpret_cast<uintptr_t>(raw) + 63) & ~uintptr_t(63))
++                  : nullptr;
+     if (p) {
+         const uintptr_t at = reinterpret_cast<uintptr_t>(p);
+         // A host block that itself sits inside the DS window would make
+@@ -118,7 +125,7 @@ void *map_fixed(uintptr_t base, size_t size) {
+         if (at < 0x08000000u + size && at + size > 0x02000000u) {
+             std::fprintf(stderr, "ntr: region 0x%08x landed at host %p, inside the "
+                                  "DS address window\n", (unsigned)base, p);
+-            std::free(p);
++            std::free(raw);
+             return nullptr;
+         }
+         g_region_host[base >> 24] = static_cast<uint8_t *>(p);
