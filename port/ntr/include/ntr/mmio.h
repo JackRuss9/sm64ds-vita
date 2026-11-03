@@ -58,6 +58,13 @@ inline void *host_ptr(uintptr_t addr) {
 #else
 inline void *host_ptr(uintptr_t addr) { return reinterpret_cast<void *>(addr); }
 #endif
+// Is `p` the DS address `ds`, spelled either way? hostgen turns a literal
+// `(int *)0x4000400` into its host_ptr() form, so a copy shim that recognises
+// the geometry FIFO by address must accept both (relocated hosts only differ).
+inline bool is_ds(uintptr_t p, uint32_t ds) {
+    return p == ds || p == reinterpret_cast<uintptr_t>(host_ptr(ds));
+}
+
 template <class T> inline T *host_ptr_t(uintptr_t addr) {
     return static_cast<T *>(host_ptr(addr));
 }

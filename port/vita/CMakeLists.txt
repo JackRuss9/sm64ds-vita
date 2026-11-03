@@ -40,9 +40,22 @@ get_filename_component(REPO_DIR "${PORT_DIR}/.." ABSOLUTE)
 # The decomp's guest idioms (pointer<->u32 casts, type-punned struct access)
 # are deliberate. -fno-strict-aliasing keeps GCC from optimizing them away;
 # the warnings are silenced so a real error stays visible.
-set(SM64DS_FLAGS -fno-strict-aliasing -w)
+set(SM64DS_FLAGS -fno-strict-aliasing -w -ffunction-sections -fdata-sections)
 # vita_create_self needs the relocations kept in the ELF.
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-q")
+# Function-level linking, as the PC port gets from MSVC (/Gy + /OPT:REF): each
+# function in its own section, unreferenced ones dropped at link time. The
+# slices compile whole translation units whose other members call into parts of
+# the game no gate links yet; like MSVC, the linker only follows what is used.
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+# vita-elf-create appends its SCE module data (module info, import stubs) right
+# after the text segment. The VitaSDK linker script 64 KiB-aligns the data
+# segment and, before that, adds __sce_headroom if it is defined: without it, a
+# text segment that happens to end just below a 64 KiB boundary leaves too
+# little room ("Cannot allocate N bytes for SCE data at end of segment 0;
+# segment 1 overlaps" -- hit on gate 3b). 16 KiB covers far more imports than
+# any gate has; the cost is at most one extra 64 KiB of address space.
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--defsym,__sce_headroom=0x4000")
 
 # Read a slice manifest (one src path per line, # comments) into a list.
 function(sm64ds_read_slice manifest out_var)
@@ -71,16 +84,71 @@ function(sm64ds_honor_cpp_markers source_var)
     endforeach()
 endfunction()
 
+# Any slice file that touches a DS address in code (a register deref or a
+# pointer cast like `(u16 *)0x06800000`) compiles from its hostgen'd copy: on the
+# Vita nothing is mapped at those addresses, so the raw file would fault there.
+# hostgen --needs decides at configure time; each copy is generated once.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+function(sm64ds_vita_auto_hostgen srcs_var)
+    set(rels "")
+    foreach(f IN LISTS ${srcs_var})
+        file(RELATIVE_PATH rel "${REPO_DIR}" "${f}")
+        list(APPEND rels "${rel}")
+    endforeach()
+    if(NOT rels)
+        return()
+    endif()
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
+                --decomp "${REPO_DIR}" --needs ${rels}
+        RESULT_VARIABLE rc OUTPUT_VARIABLE needed ERROR_VARIABLE err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT rc EQUAL 0)
+        message(FATAL_ERROR "hostgen --needs failed: ${err}")
+    endif()
+    string(REPLACE "\n" ";" needed "${needed}")
+    set(out_list ${${srcs_var}})
+    get_property(done GLOBAL PROPERTY SM64DS_AUTO_HOSTGEN)
+    foreach(rel IN LISTS needed)
+        if(rel STREQUAL "")
+            continue()
+        endif()
+        string(REGEX REPLACE "\\.(c|cpp)$" ".cpp" out_rel "${rel}")
+        set(out "${CMAKE_BINARY_DIR}/host-src/${out_rel}")
+        list(FIND done "${rel}" idx)
+        if(idx EQUAL -1)
+            add_custom_command(OUTPUT "${out}"
+                COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
+                        --decomp "${REPO_DIR}" --out "${CMAKE_BINARY_DIR}/host-src"
+                        --paths "${rel}"
+                DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
+                COMMENT "hostgen ${rel} (touches DS addresses)")
+            list(APPEND done "${rel}")
+        endif()
+        list(REMOVE_ITEM out_list "${REPO_DIR}/${rel}")
+        list(APPEND out_list "${out}")
+        message(STATUS "vita: ${rel} builds from its hostgen copy")
+    endforeach()
+    set_property(GLOBAL PROPERTY SM64DS_AUTO_HOSTGEN "${done}")
+    set(${srcs_var} "${out_list}" PARENT_SCOPE)
+endfunction()
+
 # One gate = its smoke test (main renamed), its HAL files, its slice, the
 # launcher, packed into a VPK with its own title ID.
 function(sm64ds_vita_gate name title_id label test_src)
-    cmake_parse_arguments(G "" "" "HAL;SLICES;DEFINES" ${ARGN})
+    cmake_parse_arguments(G "" "" "HAL;SLICES;DEFINES;EXCLUDE" ${ARGN})
     set(srcs "")
     foreach(manifest IN LISTS G_SLICES)
         sm64ds_read_slice(${manifest} slice)
         list(APPEND srcs ${slice})
     endforeach()
     list(REMOVE_DUPLICATES srcs)
+    # A translation unit built from its hostgen'd copy must not also compile
+    # from src/: same symbols twice.
+    if(G_EXCLUDE)
+        list(REMOVE_ITEM srcs ${G_EXCLUDE})
+    endif()
+    sm64ds_vita_auto_hostgen(srcs)
     sm64ds_honor_cpp_markers(srcs)
     set(hal "")
     foreach(h IN LISTS G_HAL)
@@ -97,7 +165,8 @@ function(sm64ds_vita_gate name title_id label test_src)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
 
     add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${test}" ${hal} ${srcs})
-    target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include")
+    target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
+        "${PORT_DIR}/ntr/include")   # hostgen'd copies include ntr/mmio.h
     target_compile_definitions(${name} PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="${name}")
     target_compile_options(${name} PRIVATE ${SM64DS_FLAGS})
     if(G_DEFINES)
@@ -121,11 +190,8 @@ sm64ds_vita_gate(gate2 SMDS00002 "SM64DS Gate 2" tests/smoke_heap.cpp
     SLICES slice_gate2.txt)
 
 # Gate 3a: SetupRootHeap + the Memory:: layer over the gate-2 allocator.
-# No hal/mem_delete2.cpp here: Heap.cpp (slice_gate3a) defines
-# Memory::operator_delete2, and under GCC that IS the _ZN6Memory16operator_delete2EPv
-# symbol the class headers reference, so the HAL copy would be a duplicate.
 sm64ds_vita_gate(gate3a SMDS00003 "SM64DS Gate 3a" tests/smoke_roots.cpp
-    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/mem_delete2.cpp
     SLICES slice_gate2.txt slice_gate3a.txt)
 
 # Gate 3b: real game files through SharedFilePtr, read straight from the
@@ -133,7 +199,7 @@ sm64ds_vita_gate(gate3a SMDS00003 "SM64DS Gate 3a" tests/smoke_roots.cpp
 # ux0:data/sm64ds/sm64ds.nds. smoke_fs's expected values were computed from
 # that ROM, so a PASS cross-checks the reader against the real data.
 sm64ds_vita_gate(gate3b SMDS00004 "SM64DS Gate 3b" tests/smoke_fs.cpp
-    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/mem_delete2.cpp
         hal/fs.cpp hal/romfs.cpp
     SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt
     DEFINES SM64DS_FS_ROM)
@@ -163,6 +229,7 @@ set_source_files_properties(
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 function(sm64ds_vita_hostgen out_var)
     set(generated "")
+    set(originals "")
     set(seen "")
     foreach(sym IN LISTS ARGN)
         execute_process(
@@ -186,8 +253,10 @@ function(sm64ds_vita_hostgen out_var)
             DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
             COMMENT "hostgen ${rel}")
         list(APPEND generated "${out}")
+        list(APPEND originals "${REPO_DIR}/${rel}")
     endforeach()
     set(${out_var} "${generated}" PARENT_SCOPE)
+    set(${out_var}_SRC "${originals}" PARENT_SCOPE)   # for a gate's EXCLUDE
 endfunction()
 
 # Gate 4a: the game's display-list pump (MI_SendGXCommandAsync and its DMA/IRQ
@@ -201,3 +270,33 @@ sm64ds_vita_gate(gate4a SMDS00005 "SM64DS Gate 4a" tests/smoke_gx.cpp
             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
 target_sources(gate4a PRIVATE ${GATE4A_GEN})
 target_link_libraries(gate4a PRIVATE ntr)
+
+# ROM constants (sine table, default matrices): zero-filled storage generated by
+# romdata.py --vita-loader, filled at startup from the ARM9 in the user's ROM by
+# hal/romdata_rom.cpp (SM64DS_VITA_PREINIT makes the launcher call it).
+set(ROMDATA_VITA "${CMAKE_BINARY_DIR}/host-src/romdata_vita.cpp")
+add_custom_command(OUTPUT "${ROMDATA_VITA}"
+    COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/romdata.py" --vita-loader "${ROMDATA_VITA}"
+    DEPENDS "${PORT_DIR}/tools/romdata.py"
+    COMMENT "romdata storage for the Vita loader")
+set_source_files_properties("${ROMDATA_VITA}" PROPERTIES
+    INCLUDE_DIRECTORIES "${PORT_DIR}/hal")
+
+# Gate 4b: the game's whole model pipeline -- SharedFilePtr loads Mario from the
+# ROM, dExtSimpleModel_c rebases it, GX::LoadTex uploads textures into the
+# (relocated) VRAM, Render walks bones/materials into the gate-4a pump.
+# Writes ux0:data/sm64ds/smoke_model.bmp.
+sm64ds_vita_hostgen(GATE4B_GEN
+    func_02044b30 Geometry_MatrixMultiply3x3 func_02055998
+    func_02044534 func_0204488c NormalizeVec3)
+sm64ds_vita_gate(gate4b SMDS00006 "SM64DS Gate 4b" tests/smoke_model.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
+        hal/romfs.cpp hal/romdata_rom.cpp
+        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
+    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
+    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
+    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
+            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
+            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+target_sources(gate4b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+target_link_libraries(gate4b PRIVATE ntr)

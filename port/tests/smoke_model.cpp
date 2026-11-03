@@ -49,6 +49,7 @@ static void reset_scene()
     ntr::gx_enable_lights(0x1);
 }
 
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 static LONG WINAPI fault(EXCEPTION_POINTERS *ep)
@@ -67,10 +68,13 @@ static LONG WINAPI fault(EXCEPTION_POINTERS *ep)
     fflush(stderr);
     return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif
 
 int main(void)
 {
+#if defined(_WIN32)
     SetUnhandledExceptionFilter(fault);
+#endif
     if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
     CHECK(_ZN5mHeap6Heap_t13SetupRootHeapEv() != NULL);
 
@@ -156,7 +160,11 @@ int main(void)
     printf("  pixels covered: %d (%.1f%%)\n", drawn,
            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
     CHECK(drawn > 500);
+#if defined(SM64DS_OUT_DIR)
+    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_model.bmp", fb);
+#else
     ntr::ppu_write_bmp("smoke_model.bmp", fb);
+#endif
 
     if (g_failures) {
         fprintf(stderr, "smoke_model: %d FAILURE(S)\n", g_failures);

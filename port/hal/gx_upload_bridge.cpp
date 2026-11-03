@@ -22,6 +22,11 @@ typedef unsigned short u16;
 // other Itanium-spelling bridges; every target that links this file links that
 // one, and the allocator layer needs the same symbol.
 
+// MSVC only, from here to the ReallocateModelFile stub: under GCC/Clang the
+// struct-GX static members, the namespace functions and the C-named HAL stubs
+// all mangle to the SAME _ZN2GX... symbols, so these forwarders would redefine
+// (and call) themselves.
+#if defined(_MSC_VER)
 extern "C" {
 void _ZN2GX12BeginLoadTexEv(void);
 void _ZN2GX10EndLoadTexEv(void);
@@ -45,12 +50,17 @@ void GX::BeginLoadTexPltt() { _ZN2GX16BeginLoadTexPlttEv(); }
 void GX::EndLoadTexPltt() { _ZN2GX14EndLoadTexPlttEv(); }
 void GX::LoadTex(const void *s, u32 o, u32 z) { _ZN2GX7LoadTexEPKvjj(s, o, z); }
 void GX::LoadTexPltt(const void *s, u32 a, u32 z) { _ZN2GX11LoadTexPlttEPKvjj(s, a, z); }
+#endif
 
 // Shrinks the file image to its post-parse size on the DS (a heap-space
 // optimization). Skipped on host: the image simply stays at load size.
 void SharedFilePtr::ReallocateModelFile() {}
 
 // Historical C-name callers -> methods that are now real C++ definitions.
+// MSVC only (GCC/Clang: these names ARE the methods), and so is the
+// LoadCompressedTextureToVram bridge below: src/engine/model/Model4.cpp now
+// defines the real u32-returning member under that same Itanium name.
+#if defined(_MSC_VER)
 extern "C" {
 void _ZN15ModelComponents21UpdateVertsUsingBonesEv(ModelComponents *self)
 { self->ModelComponents::UpdateVertsUsingBones(); }
@@ -75,3 +85,4 @@ u32 dExtSimpleModel_c::LoadCompressedTextureToVram(char *src, u32 size, char *id
     _ZN17dExtSimpleModel_c27LoadCompressedTextureToVramEPcjS0_(src, size, idx);
     return offset;
 }
+#endif  /* _MSC_VER */

@@ -82,8 +82,11 @@ extern "C" {
    replace the CRT's for the whole PC port, and port/hal already answers the
    DS spellings the headers reference (_ZdlPv and Memory's two operators).
    Only the two unnamed veneers have no host bridge, so the host gets them
-   over the same default heap. Nothing here reaches mwccarm. */
-#ifdef _MSC_VER
+   over the same default heap. Nothing here reaches mwccarm.
+   SM64DS_PLATFORM_PC as well as _MSC_VER: under GCC/Clang the DS branch would
+   define the real ::operator new/delete and take over every C++ allocation in
+   the port (std::vector included) before the game heap even exists. */
+#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
 extern "C" void *func_0203cc0c(u32 size) {
     return Memory::defaultHeapPtr->Allocate(size);
 }

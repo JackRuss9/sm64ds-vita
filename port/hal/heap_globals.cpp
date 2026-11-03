@@ -13,6 +13,8 @@
 // TUs are C (plain-name definitions). Each alias below names the x86-32
 // decorated forms.
 
+#include "ntr/mmio.h"   /* host_ptr: DS addresses -> host memory */
+
 extern "C" {
 // The single real storage. Memory::rootHeapIterator is a NestedHeapIterator
 // (a list head); the decomp TUs address it as a blob. 0x20 covers the
@@ -31,8 +33,10 @@ int _ZN6Memory25isRootHeapIterInitializedE;
 // frontier classifies its TU as HAL-owned; this is the HAL half.
 void MultiStore_Int(int val, int *dst, int len)
 {
+    /* the game fills VRAM/OAM through this too: resolve DS addresses */
+    int *d = (int *)::ntr::host_ptr((uintptr_t)dst);
     for (int i = 0; i < len / 4; ++i)
-        dst[i] = val;
+        d[i] = val;
 }
 }
 

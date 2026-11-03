@@ -132,6 +132,14 @@ def main():
                     default=str(pathlib.Path(__file__).resolve().parents[2]))
     ap.add_argument("--out", default="build/host-src")
     ap.add_argument("--all", action="store_true", help="transform every file in src/")
+    # Console builds (port/vita) pick their hostgen set automatically: any slice
+    # file that touches a DS address must go through the transform there,
+    # because nothing is mapped at those addresses.
+    ap.add_argument("--paths", nargs="+", metavar="FILE",
+                    help="transform these files (paths relative to --decomp)")
+    ap.add_argument("--needs", nargs="+", metavar="FILE",
+                    help="print, one per line, those of FILE that touch a DS "
+                         "address (register deref or pointer cast) in code")
     args = ap.parse_args()
 
     decomp = pathlib.Path(args.decomp).expanduser().resolve()
@@ -140,7 +148,17 @@ def main():
         sys.exit(f"no src/ under {decomp} -- pass --decomp")
     out_dir = pathlib.Path(args.out)
 
-    if args.all:
+    if args.needs:
+        for rel in args.needs:
+            text = (decomp / rel).read_text(encoding="utf-8", errors="replace")
+            code = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            code = re.sub(r"//[^\n]*", "", code)
+            if MMIO_DEREF.search(code) or DS_PTR_CAST.search(code):
+                print(rel)
+        return
+    if args.paths:
+        targets = [(decomp / rel).resolve() for rel in args.paths]
+    elif args.all:
         targets = [p for p in src.rglob("*") if p.suffix in (".c", ".cpp")]
     else:
         # The production enrollment table is authoritative once a reconstructed

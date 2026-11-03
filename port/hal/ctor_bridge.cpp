@@ -58,6 +58,7 @@ static_assert(sizeof(dExtModelHeir) == sizeof(dExtModel_c), "dExtModel_c heir ch
 #define CTOR_BRIDGE(sym, cls) \
     void sym(void *self) { ::new (self) cls(); }
 
+#if defined(_MSC_VER)   /* C1/C2 bridges: GCC/Clang emit both variants */
 extern "C" {
 
 // dExtSimpleModel_c is special: the port dispatches it through the SYNTHETIC _ZTV17dExtSimpleModel_c,
@@ -78,6 +79,10 @@ void _ZN17dExtSimpleModel_cC1Ev(void *self)
     *(void **)self = _ZTV17dExtSimpleModel_c;
 }
 CTOR_BRIDGE(_ZN11dExtModel_cC2Ev, dExtModelHeir)
+}
+#endif
+
+extern "C" {
 
 
 // The DS global operator delete routes through the Memory layer. This lived
@@ -86,6 +91,13 @@ CTOR_BRIDGE(_ZN11dExtModel_cC2Ev, dExtModelHeir)
 // synthesized dExtModel_c::operator delete references it.
 void _ZN6Memory10DeallocateEPv(void *p);
 void _ZN6Memory16operator_delete2EPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
+
+#if !defined(_MSC_VER)
+// include/decl_common.h's catch-all C spelling of Memory::Deallocate(void*)
+// (default heap). Under GCC/Clang the real Itanium vtables make the model
+// destructors that call it reachable, so it needs a body; same route.
+void Deallocate(void *p) { _ZN6Memory10DeallocateEPv(p); }
+#endif
 
 }
 
@@ -100,6 +112,7 @@ void _ZN6Memory16operator_delete2EPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
 // hal/clsn_vtable.cpp's shape -- present for the vtable's sake, loud if
 // anything ever dispatches through it. A gate that starts destroying a
 // dExtModel_c fails with its name on stderr instead of leaking quietly.
+#if defined(_MSC_VER)   /* GCC/Clang: src/engine/model/d_ext_model.cpp's own */
 dExtModel_c::~dExtModel_c()
 {
     fprintf(stderr, "FATAL: dExtModel_c::~dExtModel_c dispatched, but the port "
@@ -107,9 +120,15 @@ dExtModel_c::~dExtModel_c()
                     "(hal/ctor_bridge.cpp).\n");
     abort();
 }
+#endif
 
 // _ZdlPv is the DS global operator delete. Its delete veneer, func_0203cbc0,
 // which dExtSimpleModel_c's destructor calls, now comes from src/engine/heap/Heap.cpp with
 // a host body over the default heap; this keeps the _ZdlPv spelling itself
 // routed through the Memory layer.
+#if defined(_MSC_VER)
+// NEVER on GCC/Clang: there _ZdlPv IS ::operator delete(void*), and defining it
+// would route every delete in the program -- the C++ library's included --
+// into the DS heap.
 extern "C" void _ZdlPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
+#endif

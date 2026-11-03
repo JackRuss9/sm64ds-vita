@@ -35,6 +35,9 @@ int sm64ds_test_main();   // the gate's renamed main(void)
 // other C libraries (desktop/QEMU test builds).
 extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
 extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
+#if defined(SM64DS_VITA_PREINIT)
+extern "C" bool sm64ds_vita_preinit(void);   // port/hal/romdata_rom.cpp
+#endif
 
 static void append_result(const char *line_status, int rc)
 {
@@ -59,6 +62,18 @@ int main()
     fprintf(log, "== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
 
     sm64ds_log_file = log;
+#if defined(SM64DS_VITA_PREINIT)
+    // Gates that link port/hal/romdata_rom.cpp need the ROM constants loaded
+    // before any game code runs. (A compile-time switch, not a weak symbol:
+    // vita-elf-create should never see an unresolved reference.)
+    if (!sm64ds_vita_preinit()) {
+        fprintf(log, "== %s: could not load ROM constants (see above) ==\n", SM64DS_GATE_NAME);
+        sm64ds_log_file = nullptr;
+        fclose(log);
+        append_result("FAIL", 3);
+        return 0;
+    }
+#endif
     const int rc = sm64ds_test_main();
     sm64ds_log_file = nullptr;
     fprintf(log, "== %s finished: exit code %d (%s) ==\n",

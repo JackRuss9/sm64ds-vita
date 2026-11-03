@@ -1,0 +1,898 @@
+diff --git a/port/hal/actor_vtables.cpp b/port/hal/actor_vtables.cpp
+index 46e40e8..4016253 100644
+--- a/port/hal/actor_vtables.cpp
++++ b/port/hal/actor_vtables.cpp
+@@ -7,6 +7,7 @@
+ //
+ // Base-class vtable symbols the ctor chain installs and then overwrites
+ // (never dispatched between installs) are plain storage.
++#include "ntr/mmio.h"   /* host_ptr: DS addresses -> host memory */
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
+@@ -154,7 +155,10 @@ void *data_ov098_0213c380[6];
+ extern "C" {
+ /* asm primitive: plain 48-byte block copy (with writeback, unlike the
+    FIFO-fixed variant) */
+-void Copy48Bytes(int *src, int *dst) { for (int i = 0; i < 12; ++i) dst[i] = src[i]; }
++void Copy48Bytes(int *src, int *dst) {
++    int *s = (int *)::ntr::host_ptr((uintptr_t)src), *d = (int *)::ntr::host_ptr((uintptr_t)dst);
++    for (int i = 0; i < 12; ++i) d[i] = s[i];
++}
+ int data_020a0e68[4];
+ short data_0208e378;
+ short *data_0209b45c;      /* spawn default rotation ptr (null = none) */
+diff --git a/port/hal/ctor_bridge.cpp b/port/hal/ctor_bridge.cpp
+index 499274a..3153dc6 100644
+--- a/port/hal/ctor_bridge.cpp
++++ b/port/hal/ctor_bridge.cpp
+@@ -58,6 +58,7 @@ static_assert(sizeof(dExtModelHeir) == sizeof(dExtModel_c), "dExtModel_c heir ch
+ #define CTOR_BRIDGE(sym, cls) \
+     void sym(void *self) { ::new (self) cls(); }
+ 
++#if defined(_MSC_VER)   /* C1/C2 bridges: GCC/Clang emit both variants */
+ extern "C" {
+ 
+ // dExtSimpleModel_c is special: the port dispatches it through the SYNTHETIC _ZTV17dExtSimpleModel_c,
+@@ -78,6 +79,10 @@ void _ZN17dExtSimpleModel_cC1Ev(void *self)
+     *(void **)self = _ZTV17dExtSimpleModel_c;
+ }
+ CTOR_BRIDGE(_ZN11dExtModel_cC2Ev, dExtModelHeir)
++}
++#endif
++
++extern "C" {
+ 
+ 
+ // The DS global operator delete routes through the Memory layer. This lived
+@@ -87,6 +92,13 @@ CTOR_BRIDGE(_ZN11dExtModel_cC2Ev, dExtModelHeir)
+ void _ZN6Memory10DeallocateEPv(void *p);
+ void _ZN6Memory16operator_delete2EPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
+ 
++#if !defined(_MSC_VER)
++// include/decl_common.h's catch-all C spelling of Memory::Deallocate(void*)
++// (default heap). Under GCC/Clang the real Itanium vtables make the model
++// destructors that call it reachable, so it needs a body; same route.
++void Deallocate(void *p) { _ZN6Memory10DeallocateEPv(p); }
++#endif
++
+ }
+ 
+ // dExtSimpleModel_c::~dExtSimpleModel_c() is NOT bridged here: src/engine/model/d_ext_model.cpp defines a
+@@ -100,6 +112,7 @@ void _ZN6Memory16operator_delete2EPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
+ // hal/clsn_vtable.cpp's shape -- present for the vtable's sake, loud if
+ // anything ever dispatches through it. A gate that starts destroying a
+ // dExtModel_c fails with its name on stderr instead of leaking quietly.
++#if defined(_MSC_VER)   /* GCC/Clang: src/engine/model/d_ext_model.cpp's own */
+ dExtModel_c::~dExtModel_c()
+ {
+     fprintf(stderr, "FATAL: dExtModel_c::~dExtModel_c dispatched, but the port "
+@@ -107,9 +120,15 @@ dExtModel_c::~dExtModel_c()
+                     "(hal/ctor_bridge.cpp).\n");
+     abort();
+ }
++#endif
+ 
+ // _ZdlPv is the DS global operator delete. Its delete veneer, func_0203cbc0,
+ // which dExtSimpleModel_c's destructor calls, now comes from src/engine/heap/Heap.cpp with
+ // a host body over the default heap; this keeps the _ZdlPv spelling itself
+ // routed through the Memory layer.
++#if defined(_MSC_VER)
++// NEVER on GCC/Clang: there _ZdlPv IS ::operator delete(void*), and defining it
++// would route every delete in the program -- the C++ library's included --
++// into the DS heap.
+ extern "C" void _ZdlPv(void *p) { _ZN6Memory10DeallocateEPv(p); }
++#endif
+diff --git a/port/hal/gx_upload_bridge.cpp b/port/hal/gx_upload_bridge.cpp
+index cfa3812..907ba2d 100644
+--- a/port/hal/gx_upload_bridge.cpp
++++ b/port/hal/gx_upload_bridge.cpp
+@@ -22,6 +22,11 @@ typedef unsigned short u16;
+ // other Itanium-spelling bridges; every target that links this file links that
+ // one, and the allocator layer needs the same symbol.
+ 
++// MSVC only, from here to the ReallocateModelFile stub: under GCC/Clang the
++// struct-GX static members, the namespace functions and the C-named HAL stubs
++// all mangle to the SAME _ZN2GX... symbols, so these forwarders would redefine
++// (and call) themselves.
++#if defined(_MSC_VER)
+ extern "C" {
+ void _ZN2GX12BeginLoadTexEv(void);
+ void _ZN2GX10EndLoadTexEv(void);
+@@ -45,12 +50,17 @@ void GX::BeginLoadTexPltt() { _ZN2GX16BeginLoadTexPlttEv(); }
+ void GX::EndLoadTexPltt() { _ZN2GX14EndLoadTexPlttEv(); }
+ void GX::LoadTex(const void *s, u32 o, u32 z) { _ZN2GX7LoadTexEPKvjj(s, o, z); }
+ void GX::LoadTexPltt(const void *s, u32 a, u32 z) { _ZN2GX11LoadTexPlttEPKvjj(s, a, z); }
++#endif
+ 
+ // Shrinks the file image to its post-parse size on the DS (a heap-space
+ // optimization). Skipped on host: the image simply stays at load size.
+ void SharedFilePtr::ReallocateModelFile() {}
+ 
+ // Historical C-name callers -> methods that are now real C++ definitions.
++// MSVC only (GCC/Clang: these names ARE the methods), and so is the
++// LoadCompressedTextureToVram bridge below: src/engine/model/Model4.cpp now
++// defines the real u32-returning member under that same Itanium name.
++#if defined(_MSC_VER)
+ extern "C" {
+ void _ZN15ModelComponents21UpdateVertsUsingBonesEv(ModelComponents *self)
+ { self->ModelComponents::UpdateVertsUsingBones(); }
+@@ -75,3 +85,4 @@ u32 dExtSimpleModel_c::LoadCompressedTextureToVram(char *src, u32 size, char *id
+     _ZN17dExtSimpleModel_c27LoadCompressedTextureToVramEPcjS0_(src, size, idx);
+     return offset;
+ }
++#endif  /* _MSC_VER */
+diff --git a/port/hal/heap_globals.cpp b/port/hal/heap_globals.cpp
+index 439b1e1..3c74324 100644
+--- a/port/hal/heap_globals.cpp
++++ b/port/hal/heap_globals.cpp
+@@ -13,6 +13,8 @@
+ // TUs are C (plain-name definitions). Each alias below names the x86-32
+ // decorated forms.
+ 
++#include "ntr/mmio.h"   /* host_ptr: DS addresses -> host memory */
++
+ extern "C" {
+ // The single real storage. Memory::rootHeapIterator is a NestedHeapIterator
+ // (a list head); the decomp TUs address it as a blob. 0x20 covers the
+@@ -31,8 +33,10 @@ int _ZN6Memory25isRootHeapIterInitializedE;
+ // frontier classifies its TU as HAL-owned; this is the HAL half.
+ void MultiStore_Int(int val, int *dst, int len)
+ {
++    /* the game fills VRAM/OAM through this too: resolve DS addresses */
++    int *d = (int *)::ntr::host_ptr((uintptr_t)dst);
+     for (int i = 0; i < len / 4; ++i)
+-        dst[i] = val;
++        d[i] = val;
+ }
+ }
+ 
+diff --git a/port/hal/model_host.cpp b/port/hal/model_host.cpp
+index 5d3ddbb..9d962db 100644
+--- a/port/hal/model_host.cpp
++++ b/port/hal/model_host.cpp
+@@ -10,6 +10,7 @@
+ // - the texture-VRAM budget globals dExtSimpleModel_c::GetVramOffset bump-allocates
+ //   from,
+ // - storage for the render context globals the walk stores through.
++#include "ntr/mmio.h"   /* host_ptr: DS addresses -> host memory */
+ #include <string.h>
+ 
+ typedef unsigned int u32;
+@@ -29,13 +30,14 @@ void func_020527e8(int *m, int sx, int sy, int sz)
+ /* word copy primitive used by the VRAM upload CPU path */
+ void MultiCopy_Int(int *src, int *dst, int len)
+ {
+-    memcpy(dst, src, len);
++    /* dst is a VRAM address on the texture-upload path: resolve both ends */
++    memcpy(::ntr::host_ptr((uintptr_t)dst), ::ntr::host_ptr((uintptr_t)src), len);
+ }
+ 
+ /* 32-byte-block copy primitive (asm on the DS) */
+ void MultiCopy32Bytes(int *src, int *dst, int len)
+ {
+-    memcpy(dst, src, len);
++    memcpy(::ntr::host_ptr((uintptr_t)dst), ::ntr::host_ptr((uintptr_t)src), len);
+ }
+ 
+ // ---- OAM shadow state (BSS on the DS) -------------------------------------
+@@ -141,12 +143,15 @@ int data_02099f24[4];
+ int data_0209cefc[3 * 64];  /* 64 records x 0xc */
+ int data_0209cef8[1];       /* record count */
+ int data_0208e738[1] = { 1 };   /* nonzero: upload textures on registration */
++#if defined(_MSC_VER)   /* GCC/Clang emit the real Itanium vtables */
+ int _ZTV11dExtModel_c[8];       /* dExtModel_c vtable storage; never dispatched */
++#endif
+ int data_0209b3ec[12];      /* camera Matrix4x3 the render walk composes */
+ 
+ // dExtSimpleModel_c's Itanium vtable storage: installed by the C ctor. The gates call
+ // every method non-virtually (qualified), so plain zero slots are fine; if
+ // anything ever dispatches through them it faults immediately and loudly.
++#if defined(_MSC_VER)   /* GCC/Clang: the compiler's own vtables, same layout as the ROM */
+ void *_ZTV17dExtSimpleModel_c[8];
+ // Same story for the animated-model hierarchy. The secondary (dExtFrameCtrl_c
+ // at +0x50) table needs no storage here: on the DS it is _ZTV14dExtAnmModel_c
+@@ -154,6 +159,7 @@ void *_ZTV17dExtSimpleModel_c[8];
+ void *_ZTV15dExtFrameCtrl_c[8];
+ void *_ZTV14dExtAnmModel_c[10];
+ void *_ZTV4dBgW[13];   /* base: never dispatched in the gates */
++#endif
+ unsigned char data_020a0c78[8]; /* the default CLPS ENTRY (8-byte storage,
+                                    func_02037e9c fills it on first lookup) */
+ 
+@@ -184,10 +190,12 @@ unsigned short data_02099f94[8];
+ namespace GX {
+ void LoadTex(const void *src, unsigned offset, unsigned size);
+ }
++#if defined(_MSC_VER)   /* GCC/Clang: that C name IS GX::LoadTex */
+ extern "C" void _ZN2GX7LoadTexEPKvjj(const void *s, unsigned o, unsigned z)
+ {
+     GX::LoadTex(s, o, z);
+ }
++#endif
+ 
+ // operator_new2 on the DS is a register-passthrough tail-call veneer to
+ // func_0203cc0c; that shape breaks on cdecl (the callee would read the
+diff --git a/port/hal/romdata_rom.cpp b/port/hal/romdata_rom.cpp
+new file mode 100644
+index 0000000..eb82513
+--- /dev/null
++++ b/port/hal/romdata_rom.cpp
+@@ -0,0 +1,58 @@
++// Fill the ROM-constant tables from the ARM9 inside the user's .nds.
++// See romdata_rom.h. Same facts and same anchor check as port/tools/romdata.py,
++// which reads them from extracted/arm9_dec.bin on PC.
++#include "romdata_rom.h"
++
++#include "romfs.h"
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#ifndef SM64DS_ROM_PATH
++#define SM64DS_ROM_PATH "ux0:data/sm64ds/sm64ds.nds"
++#endif
++
++namespace {
++// romdata.py's anchor: Copy36Bytes starts with `ldmia r0!, {r2, r3, ip}` here.
++constexpr uint32_t ANCHOR_ADDR = 0x0205A548u;
++const uint8_t ANCHOR_BYTES[4] = {0x0c, 0x10, 0xb0, 0xe8};
++}  // namespace
++
++bool sm64ds_romdata_load(const char *rom_path) {
++    if (!rom_path) rom_path = getenv("SM64DS_ROM");
++    if (!rom_path) rom_path = SM64DS_ROM_PATH;
++    uint32_t base = 0;
++    size_t len = 0;
++    uint8_t *arm9 = romfs::read_arm9(rom_path, &base, &len);
++    if (!arm9) {
++        fprintf(stderr, "romdata: could not read the ARM9 from %s\n", rom_path);
++        return false;
++    }
++    bool ok = true;
++    if (ANCHOR_ADDR < base || ANCHOR_ADDR - base + 4 > len ||
++        memcmp(arm9 + (ANCHOR_ADDR - base), ANCHOR_BYTES, 4) != 0) {
++        fprintf(stderr, "romdata: ARM9 failed the Copy36Bytes anchor at 0x%08x "
++                        "(wrong game or region?)\n", (unsigned)ANCHOR_ADDR);
++        ok = false;
++    }
++    for (size_t i = 0; ok && i < sm64ds_romdata_count; ++i) {
++        const RomdataTable &t = sm64ds_romdata_tables[i];
++        if (t.addr < base || t.addr + t.length > sm64ds_romdata_bss_start ||
++            t.addr - base + t.length > len) {
++            fprintf(stderr, "romdata: table 0x%08x+0x%x is outside the ARM9 image\n",
++                    (unsigned)t.addr, (unsigned)t.length);
++            ok = false;
++            break;
++        }
++        memcpy(t.storage, arm9 + (t.addr - base), t.length);
++    }
++    free(arm9);
++    return ok;
++}
++
++// The launcher's pre-test hook (port/vita/vita_main.cpp): the tables must be in
++// place before any game code runs.
++extern "C" bool sm64ds_vita_preinit(void) {
++    return sm64ds_romdata_load(nullptr);
++}
+diff --git a/port/hal/romdata_rom.h b/port/hal/romdata_rom.h
+new file mode 100644
+index 0000000..3a7bbab
+--- /dev/null
++++ b/port/hal/romdata_rom.h
+@@ -0,0 +1,25 @@
++// ROM constants (sine table, default matrices, OBJ size tables) for console
++// builds: zero-filled storage generated by `port/tools/romdata.py
++// --vita-loader`, filled at startup from the ARM9 inside the user's ROM. The
++// PC build keeps romdata.py's generated initialized arrays instead.
++#ifndef SM64DS_PORT_ROMDATA_ROM_H
++#define SM64DS_PORT_ROMDATA_ROM_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++struct RomdataTable {
++    uint32_t addr;     // ARM9 address of the table in the retail image
++    uint32_t length;   // bytes
++    void *storage;     // the host symbol game code links against
++};
++
++extern const RomdataTable sm64ds_romdata_tables[];
++extern const size_t sm64ds_romdata_count;
++extern const uint32_t sm64ds_romdata_bss_start;
++
++// Fill every table from the ROM. false (with a message on stderr) if the ROM
++// is missing or its ARM9 is not the image the tables were taken from.
++bool sm64ds_romdata_load(const char *rom_path);
++
++#endif
+diff --git a/port/hal/romfs.cpp b/port/hal/romfs.cpp
+index 2cfae80..c76d7a3 100644
+--- a/port/hal/romfs.cpp
++++ b/port/hal/romfs.cpp
+@@ -260,6 +260,40 @@ bool open(const char *rom_path,
+     return ok;
+ }
+ 
++uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
++    FILE *f = fopen(rom_path, "rb");
++    if (!f) return nullptr;
++    uint8_t hdr[0x30];
++    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return nullptr; }
++    // GBATEK header: 0x20 ARM9 ROM offset, 0x28 RAM address, 0x2C size.
++    const uint32_t off = rd32(hdr + 0x20), ram = rd32(hdr + 0x28), size = rd32(hdr + 0x2C);
++    uint8_t *raw = (size >= 8 && size < (64u << 20)) ? (uint8_t *)malloc(size) : nullptr;
++    if (!raw || fseek(f, (long)off, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
++        free(raw); fclose(f); return nullptr;
++    }
++    fclose(f);
++    // Like ndspy's code decompression: the BLZ footer may be followed by up to
++    // 0x1C bytes of appended data. Take the first plausible footer position.
++    size_t stream = 0;
++    for (size_t extra = 0; extra < 0x20 && extra + 8 <= size; extra += 4) {
++        const uint32_t word = rd32(raw + size - extra - 8);
++        const uint32_t hdr_len = word >> 24, enc_len = word & 0xFFFFFF;
++        if (hdr_len < 8 || enc_len > size) continue;
++        stream = size - extra;
++        break;
++    }
++    uint8_t *out = nullptr;
++    if (stream) {
++        out = blz_decompress(raw, stream, len);
++        free(raw);
++    } else {               // no footer at all: stored uncompressed
++        out = raw;
++        *len = size;
++    }
++    if (out) *ram_base = ram;
++    return out;
++}
++
+ uint8_t *read_file(unsigned file_id, size_t *size) {
+     if (!g_rom || file_id >= g_file_count) return nullptr;
+     const uint32_t start = rd32(g_fat + file_id * 8), end = rd32(g_fat + file_id * 8 + 4);
+diff --git a/port/hal/romfs.h b/port/hal/romfs.h
+index cc84664..0aa5c4a 100644
+--- a/port/hal/romfs.h
++++ b/port/hal/romfs.h
+@@ -31,6 +31,11 @@ bool open(const char *rom_path,
+ // or a short read. *size receives the length.
+ uint8_t *read_file(unsigned file_id, size_t *size);
+ 
++// The ARM9 main binary from `rom_path`, decompressed, malloc'd (caller frees).
++// *ram_base receives its load address (0x02004000 in SM64DS). Opens the ROM on
++// its own, so it works before (and independently of) open().
++uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len);
++
+ // Nintendo's backward LZ ("BLZ"), the ARM9/overlay code compression. `src` is
+ // the whole compressed file (footer included); returns the decompressed image,
+ // malloc'd, or nullptr if the footer is inconsistent. Exposed for tests.
+diff --git a/port/ntr/include/ntr/mmio.h b/port/ntr/include/ntr/mmio.h
+index 5d30e30..e997b21 100644
+--- a/port/ntr/include/ntr/mmio.h
++++ b/port/ntr/include/ntr/mmio.h
+@@ -58,6 +58,13 @@ inline void *host_ptr(uintptr_t addr) {
+ #else
+ inline void *host_ptr(uintptr_t addr) { return reinterpret_cast<void *>(addr); }
+ #endif
++// Is `p` the DS address `ds`, spelled either way? hostgen turns a literal
++// `(int *)0x4000400` into its host_ptr() form, so a copy shim that recognises
++// the geometry FIFO by address must accept both (relocated hosts only differ).
++inline bool is_ds(uintptr_t p, uint32_t ds) {
++    return p == ds || p == reinterpret_cast<uintptr_t>(host_ptr(ds));
++}
++
+ template <class T> inline T *host_ptr_t(uintptr_t addr) {
+     return static_cast<T *>(host_ptr(addr));
+ }
+diff --git a/port/ntr/runtime.cpp b/port/ntr/runtime.cpp
+index f95c5ec..0b6b4d8 100644
+--- a/port/ntr/runtime.cpp
++++ b/port/ntr/runtime.cpp
+@@ -94,7 +94,7 @@ namespace {
+ constexpr uint32_t GXFIFO = 0x04000400u;
+ 
+ void copy_words(const uint32_t *src, uint32_t *dst, int n) {
+-    if (reinterpret_cast<uintptr_t>(dst) == GXFIFO) {
++    if (ntr::is_ds(reinterpret_cast<uintptr_t>(dst), GXFIFO)) {
+         const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
+         for (int i = 0; i < n; ++i) ntr::gx_write_fifo(s[i]);
+     } else {
+@@ -117,7 +117,7 @@ extern "C" void Copy36Bytes(int *src, int *dst) {
+ // ever used against the FIFO; for a memory destination the DS semantics would
+ // overwrite the same three words four times, so a memory dst is a bug here.
+ extern "C" void Copy48BytesFixed(int *src, int *dst) {
+-    if (reinterpret_cast<uintptr_t>(dst) == 0x04000400u) {
++    if (ntr::is_ds(reinterpret_cast<uintptr_t>(dst), 0x04000400u)) {
+         for (int i = 0; i < 12; ++i) ntr::gx_write_fifo(static_cast<uint32_t>(src[i]));
+     } else {
+         int *d = static_cast<int *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
+@@ -128,7 +128,7 @@ extern "C" void Copy48BytesFixed(int *src, int *dst) {
+ // The FIFO flush primitive: 32 no-writeback stmia of four zeroed registers,
+ // 128 NOP command words that push any partially-packed command through.
+ extern "C" void func_020553c0(unsigned addr) {
+-    if (addr == 0x04000400u)
++    if (ntr::is_ds(addr, 0x04000400u))
+         for (int i = 0; i < 128; ++i) ntr::gx_write_fifo(0);
+ }
+ 
+@@ -205,7 +205,7 @@ extern "C" void DMAStartTransfer(int ch, int src, int dst, int ctrl) {
+     const int words = ctrl & 0x1FFFFF;
+     copy_words(reinterpret_cast<const uint32_t *>(static_cast<uintptr_t>(src)),
+                reinterpret_cast<uint32_t *>(static_cast<uintptr_t>(dst)), words);
+-    if (static_cast<uintptr_t>(dst) == 0x04000400u) {
++    if (ntr::is_ds(static_cast<uintptr_t>(dst), 0x04000400u)) {
+         if (ctrl & 0x40000000) {
+             const unsigned h = data_020a60c4[ch & 7].handler;
+             if (h) reinterpret_cast<void (*)(unsigned)>(h)(data_020a60c4[ch & 7].arg);
+diff --git a/port/tests/smoke_model.cpp b/port/tests/smoke_model.cpp
+index a210c5d..93b3d85 100644
+--- a/port/tests/smoke_model.cpp
++++ b/port/tests/smoke_model.cpp
+@@ -49,6 +49,7 @@ static void reset_scene()
+     ntr::gx_enable_lights(0x1);
+ }
+ 
++#if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ static LONG WINAPI fault(EXCEPTION_POINTERS *ep)
+@@ -67,10 +68,13 @@ static LONG WINAPI fault(EXCEPTION_POINTERS *ep)
+     fflush(stderr);
+     return EXCEPTION_EXECUTE_HANDLER;
+ }
++#endif
+ 
+ int main(void)
+ {
++#if defined(_WIN32)
+     SetUnhandledExceptionFilter(fault);
++#endif
+     if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
+     CHECK(_ZN5mHeap6Heap_t13SetupRootHeapEv() != NULL);
+ 
+@@ -156,7 +160,11 @@ int main(void)
+     printf("  pixels covered: %d (%.1f%%)\n", drawn,
+            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
+     CHECK(drawn > 500);
++#if defined(SM64DS_OUT_DIR)
++    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_model.bmp", fb);
++#else
+     ntr::ppu_write_bmp("smoke_model.bmp", fb);
++#endif
+ 
+     if (g_failures) {
+         fprintf(stderr, "smoke_model: %d FAILURE(S)\n", g_failures);
+diff --git a/port/tools/hostgen.py b/port/tools/hostgen.py
+index 7aef31c..c651f07 100644
+--- a/port/tools/hostgen.py
++++ b/port/tools/hostgen.py
+@@ -132,6 +132,14 @@ def main():
+                     default=str(pathlib.Path(__file__).resolve().parents[2]))
+     ap.add_argument("--out", default="build/host-src")
+     ap.add_argument("--all", action="store_true", help="transform every file in src/")
++    # Console builds (port/vita) pick their hostgen set automatically: any slice
++    # file that touches a DS address must go through the transform there,
++    # because nothing is mapped at those addresses.
++    ap.add_argument("--paths", nargs="+", metavar="FILE",
++                    help="transform these files (paths relative to --decomp)")
++    ap.add_argument("--needs", nargs="+", metavar="FILE",
++                    help="print, one per line, those of FILE that touch a DS "
++                         "address (register deref or pointer cast) in code")
+     args = ap.parse_args()
+ 
+     decomp = pathlib.Path(args.decomp).expanduser().resolve()
+@@ -140,7 +148,17 @@ def main():
+         sys.exit(f"no src/ under {decomp} -- pass --decomp")
+     out_dir = pathlib.Path(args.out)
+ 
+-    if args.all:
++    if args.needs:
++        for rel in args.needs:
++            text = (decomp / rel).read_text(encoding="utf-8", errors="replace")
++            code = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
++            code = re.sub(r"//[^\n]*", "", code)
++            if MMIO_DEREF.search(code) or DS_PTR_CAST.search(code):
++                print(rel)
++        return
++    if args.paths:
++        targets = [(decomp / rel).resolve() for rel in args.paths]
++    elif args.all:
+         targets = [p for p in src.rglob("*") if p.suffix in (".c", ".cpp")]
+     else:
+         # The production enrollment table is authoritative once a reconstructed
+diff --git a/port/tools/romdata.py b/port/tools/romdata.py
+index df2185a..e1c9d08 100644
+--- a/port/tools/romdata.py
++++ b/port/tools/romdata.py
+@@ -36,7 +36,36 @@ TABLES = [
+ ]
+ 
+ 
++def emit_vita_loader(out_path):
++    """--vita-loader OUT: the console build reads these tables from the user's
++    ROM at startup (port/hal/romdata_rom.cpp), so no Nintendo bytes exist at
++    build time either. Emit the same symbols as zero-filled storage plus a
++    descriptor table the loader fills them from. TABLES stays the one list."""
++    lines = ["// GENERATED by port/tools/romdata.py --vita-loader. Storage for the",
++             "// ROM constants; port/hal/romdata_rom.cpp fills it from the ROM's ARM9.",
++             "#include <stddef.h>", "#include <stdint.h>",
++             '#include "romdata_rom.h"', "", 'extern "C" {']
++    entries = []
++    for addr, length, ctype, *rest in TABLES:
++        name = f"data_{addr:08x}"
++        width = 4 if ctype == "int" else (2 if ctype == "short" else 1)
++        lines.append(f"__attribute__((aligned(4))) {ctype} {name}[{length // width}];")
++        for alias in (rest[0] if rest else []):
++            lines.append(f'extern {ctype} {alias}[{length // width}] '
++                         f'__attribute__((alias("{name}")));')
++        entries.append(f"    {{0x{addr:08x}u, {length}u, {name}}},")
++    lines += ["}", "", "const RomdataTable sm64ds_romdata_tables[] = {", *entries, "};",
++              f"const size_t sm64ds_romdata_count = {len(TABLES)};",
++              f"const uint32_t sm64ds_romdata_bss_start = 0x{BSS_START:08x}u;", ""]
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    out_path.write_text("\n".join(lines), encoding="ascii")
++    print(f"romdata (vita loader) -> {out_path}")
++
++
+ def main():
++    if len(sys.argv) > 2 and sys.argv[1] == "--vita-loader":
++        emit_vita_loader(pathlib.Path(sys.argv[2]))
++        return
+     root = pathlib.Path(__file__).resolve().parents[2]
+     img = root / "extracted/arm9_dec.bin"
+     if not img.exists():
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index f9bbaba..5b77d2a 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -40,9 +40,14 @@ get_filename_component(REPO_DIR "${PORT_DIR}/.." ABSOLUTE)
+ # The decomp's guest idioms (pointer<->u32 casts, type-punned struct access)
+ # are deliberate. -fno-strict-aliasing keeps GCC from optimizing them away;
+ # the warnings are silenced so a real error stays visible.
+-set(SM64DS_FLAGS -fno-strict-aliasing -w)
++set(SM64DS_FLAGS -fno-strict-aliasing -w -ffunction-sections -fdata-sections)
+ # vita_create_self needs the relocations kept in the ELF.
+ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-q")
++# Function-level linking, as the PC port gets from MSVC (/Gy + /OPT:REF): each
++# function in its own section, unreferenced ones dropped at link time. The
++# slices compile whole translation units whose other members call into parts of
++# the game no gate links yet; like MSVC, the linker only follows what is used.
++set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
+ 
+ # Read a slice manifest (one src path per line, # comments) into a list.
+ function(sm64ds_read_slice manifest out_var)
+@@ -71,16 +76,71 @@ function(sm64ds_honor_cpp_markers source_var)
+     endforeach()
+ endfunction()
+ 
++# Any slice file that touches a DS address in code (a register deref or a
++# pointer cast like `(u16 *)0x06800000`) compiles from its hostgen'd copy: on the
++# Vita nothing is mapped at those addresses, so the raw file would fault there.
++# hostgen --needs decides at configure time; each copy is generated once.
++find_package(Python3 REQUIRED COMPONENTS Interpreter)
++function(sm64ds_vita_auto_hostgen srcs_var)
++    set(rels "")
++    foreach(f IN LISTS ${srcs_var})
++        file(RELATIVE_PATH rel "${REPO_DIR}" "${f}")
++        list(APPEND rels "${rel}")
++    endforeach()
++    if(NOT rels)
++        return()
++    endif()
++    execute_process(
++        COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
++                --decomp "${REPO_DIR}" --needs ${rels}
++        RESULT_VARIABLE rc OUTPUT_VARIABLE needed ERROR_VARIABLE err
++        OUTPUT_STRIP_TRAILING_WHITESPACE)
++    if(NOT rc EQUAL 0)
++        message(FATAL_ERROR "hostgen --needs failed: ${err}")
++    endif()
++    string(REPLACE "\n" ";" needed "${needed}")
++    set(out_list ${${srcs_var}})
++    get_property(done GLOBAL PROPERTY SM64DS_AUTO_HOSTGEN)
++    foreach(rel IN LISTS needed)
++        if(rel STREQUAL "")
++            continue()
++        endif()
++        string(REGEX REPLACE "\\.(c|cpp)$" ".cpp" out_rel "${rel}")
++        set(out "${CMAKE_BINARY_DIR}/host-src/${out_rel}")
++        list(FIND done "${rel}" idx)
++        if(idx EQUAL -1)
++            add_custom_command(OUTPUT "${out}"
++                COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
++                        --decomp "${REPO_DIR}" --out "${CMAKE_BINARY_DIR}/host-src"
++                        --paths "${rel}"
++                DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
++                COMMENT "hostgen ${rel} (touches DS addresses)")
++            list(APPEND done "${rel}")
++        endif()
++        list(REMOVE_ITEM out_list "${REPO_DIR}/${rel}")
++        list(APPEND out_list "${out}")
++        message(STATUS "vita: ${rel} builds from its hostgen copy")
++    endforeach()
++    set_property(GLOBAL PROPERTY SM64DS_AUTO_HOSTGEN "${done}")
++    set(${srcs_var} "${out_list}" PARENT_SCOPE)
++endfunction()
++
+ # One gate = its smoke test (main renamed), its HAL files, its slice, the
+ # launcher, packed into a VPK with its own title ID.
+ function(sm64ds_vita_gate name title_id label test_src)
+-    cmake_parse_arguments(G "" "" "HAL;SLICES;DEFINES" ${ARGN})
++    cmake_parse_arguments(G "" "" "HAL;SLICES;DEFINES;EXCLUDE" ${ARGN})
+     set(srcs "")
+     foreach(manifest IN LISTS G_SLICES)
+         sm64ds_read_slice(${manifest} slice)
+         list(APPEND srcs ${slice})
+     endforeach()
+     list(REMOVE_DUPLICATES srcs)
++    # A translation unit built from its hostgen'd copy must not also compile
++    # from src/: same symbols twice.
++    if(G_EXCLUDE)
++        list(REMOVE_ITEM srcs ${G_EXCLUDE})
++    endif()
++    sm64ds_vita_auto_hostgen(srcs)
+     sm64ds_honor_cpp_markers(srcs)
+     set(hal "")
+     foreach(h IN LISTS G_HAL)
+@@ -97,7 +157,8 @@ function(sm64ds_vita_gate name title_id label test_src)
+         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
+ 
+     add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${test}" ${hal} ${srcs})
+-    target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include")
++    target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
++        "${PORT_DIR}/ntr/include")   # hostgen'd copies include ntr/mmio.h
+     target_compile_definitions(${name} PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="${name}")
+     target_compile_options(${name} PRIVATE ${SM64DS_FLAGS})
+     if(G_DEFINES)
+@@ -121,11 +182,8 @@ sm64ds_vita_gate(gate2 SMDS00002 "SM64DS Gate 2" tests/smoke_heap.cpp
+     SLICES slice_gate2.txt)
+ 
+ # Gate 3a: SetupRootHeap + the Memory:: layer over the gate-2 allocator.
+-# No hal/mem_delete2.cpp here: Heap.cpp (slice_gate3a) defines
+-# Memory::operator_delete2, and under GCC that IS the _ZN6Memory16operator_delete2EPv
+-# symbol the class headers reference, so the HAL copy would be a duplicate.
+ sm64ds_vita_gate(gate3a SMDS00003 "SM64DS Gate 3a" tests/smoke_roots.cpp
+-    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/mem_delete2.cpp
+     SLICES slice_gate2.txt slice_gate3a.txt)
+ 
+ # Gate 3b: real game files through SharedFilePtr, read straight from the
+@@ -133,7 +191,7 @@ sm64ds_vita_gate(gate3a SMDS00003 "SM64DS Gate 3a" tests/smoke_roots.cpp
+ # ux0:data/sm64ds/sm64ds.nds. smoke_fs's expected values were computed from
+ # that ROM, so a PASS cross-checks the reader against the real data.
+ sm64ds_vita_gate(gate3b SMDS00004 "SM64DS Gate 3b" tests/smoke_fs.cpp
+-    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/mem_delete2.cpp
+         hal/fs.cpp hal/romfs.cpp
+     SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt
+     DEFINES SM64DS_FS_ROM)
+@@ -163,6 +221,7 @@ set_source_files_properties(
+ find_package(Python3 REQUIRED COMPONENTS Interpreter)
+ function(sm64ds_vita_hostgen out_var)
+     set(generated "")
++    set(originals "")
+     set(seen "")
+     foreach(sym IN LISTS ARGN)
+         execute_process(
+@@ -186,8 +245,10 @@ function(sm64ds_vita_hostgen out_var)
+             DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
+             COMMENT "hostgen ${rel}")
+         list(APPEND generated "${out}")
++        list(APPEND originals "${REPO_DIR}/${rel}")
+     endforeach()
+     set(${out_var} "${generated}" PARENT_SCOPE)
++    set(${out_var}_SRC "${originals}" PARENT_SCOPE)   # for a gate's EXCLUDE
+ endfunction()
+ 
+ # Gate 4a: the game's display-list pump (MI_SendGXCommandAsync and its DMA/IRQ
+@@ -201,3 +262,33 @@ sm64ds_vita_gate(gate4a SMDS00005 "SM64DS Gate 4a" tests/smoke_gx.cpp
+             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+ target_sources(gate4a PRIVATE ${GATE4A_GEN})
+ target_link_libraries(gate4a PRIVATE ntr)
++
++# ROM constants (sine table, default matrices): zero-filled storage generated by
++# romdata.py --vita-loader, filled at startup from the ARM9 in the user's ROM by
++# hal/romdata_rom.cpp (SM64DS_VITA_PREINIT makes the launcher call it).
++set(ROMDATA_VITA "${CMAKE_BINARY_DIR}/host-src/romdata_vita.cpp")
++add_custom_command(OUTPUT "${ROMDATA_VITA}"
++    COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/romdata.py" --vita-loader "${ROMDATA_VITA}"
++    DEPENDS "${PORT_DIR}/tools/romdata.py"
++    COMMENT "romdata storage for the Vita loader")
++set_source_files_properties("${ROMDATA_VITA}" PROPERTIES
++    INCLUDE_DIRECTORIES "${PORT_DIR}/hal")
++
++# Gate 4b: the game's whole model pipeline -- SharedFilePtr loads Mario from the
++# ROM, dExtSimpleModel_c rebases it, GX::LoadTex uploads textures into the
++# (relocated) VRAM, Render walks bones/materials into the gate-4a pump.
++# Writes ux0:data/sm64ds/smoke_model.bmp.
++sm64ds_vita_hostgen(GATE4B_GEN
++    func_02044b30 Geometry_MatrixMultiply3x3 func_02055998
++    func_02044534 func_0204488c NormalizeVec3)
++sm64ds_vita_gate(gate4b SMDS00006 "SM64DS Gate 4b" tests/smoke_model.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate4b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate4b PRIVATE ntr)
+diff --git a/port/vita/vita_main.cpp b/port/vita/vita_main.cpp
+index d0b9e13..1d119a7 100644
+--- a/port/vita/vita_main.cpp
++++ b/port/vita/vita_main.cpp
+@@ -35,6 +35,9 @@ int sm64ds_test_main();   // the gate's renamed main(void)
+ // other C libraries (desktop/QEMU test builds).
+ extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
+ extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
++#if defined(SM64DS_VITA_PREINIT)
++extern "C" bool sm64ds_vita_preinit(void);   // port/hal/romdata_rom.cpp
++#endif
+ 
+ static void append_result(const char *line_status, int rc)
+ {
+@@ -59,6 +62,18 @@ int main()
+     fprintf(log, "== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
+ 
+     sm64ds_log_file = log;
++#if defined(SM64DS_VITA_PREINIT)
++    // Gates that link port/hal/romdata_rom.cpp need the ROM constants loaded
++    // before any game code runs. (A compile-time switch, not a weak symbol:
++    // vita-elf-create should never see an unresolved reference.)
++    if (!sm64ds_vita_preinit()) {
++        fprintf(log, "== %s: could not load ROM constants (see above) ==\n", SM64DS_GATE_NAME);
++        sm64ds_log_file = nullptr;
++        fclose(log);
++        append_result("FAIL", 3);
++        return 0;
++    }
++#endif
+     const int rc = sm64ds_test_main();
+     sm64ds_log_file = nullptr;
+     fprintf(log, "== %s finished: exit code %d (%s) ==\n",
+diff --git a/src/engine/gx/GX.cpp b/src/engine/gx/GX.cpp
+index 2efc2eb..17f506e 100644
+--- a/src/engine/gx/GX.cpp
++++ b/src/engine/gx/GX.cpp
+@@ -34,6 +34,10 @@ extern void MultiCopy_Int(int *src, int *dst, int len);
+ 
+ namespace GX {
+ 
++/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
++   names coincide; MSVC keeps both under different decorations): the port's
++   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+ // @symbol _ZN2GX12BeginLoadTexEv
+ void BeginLoadTex() {
+     int r = GX::ResetBankForTex();
+@@ -43,6 +47,7 @@ void BeginLoadTex() {
+     data_020a60bc = (int)*(u16 *)((char *)data_02086326 + i) << 12;
+     data_020a60c0 = (int)*(u16 *)((char *)data_02086328 + i) << 12;
+ }
++#endif
+ 
+ // VRAM texture upload with banked destination: below-top goes to the base
+ // window, above-top to the secondary bank, straddling splits into two DMA (or
+@@ -82,6 +87,10 @@ void LoadTex(const void *src, unsigned int offset, unsigned int size) {
+ 
+ // Ends a banked texture upload: waits on the upload DMA channel if one is
+ // active, restores the texture bank, then clears the four upload-window globals.
++/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
++   names coincide; MSVC keeps both under different decorations): the port's
++   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+ // @symbol _ZN2GX10EndLoadTexEv
+ void EndLoadTex()
+ {
+@@ -94,13 +103,19 @@ void EndLoadTex()
+     data_020a60ac = 0;
+     data_020a60b8 = 0;
+ }
++#endif
+ 
++/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
++   names coincide; MSVC keeps both under different decorations): the port's
++   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+ // @symbol _ZN2GX16BeginLoadTexPlttEv
+ void BeginLoadTexPltt() {
+     int r = GX::ResetBankForTexPltt();
+     data_020a60b4 = r;
+     data_020a60b0 = (int)data_02086314[r >> 4] << 12;
+ }
++#endif
+ 
+ // Loads a texture palette into VRAM: async DMA when a channel is configured
+ // (data_02099fd0 != -1), otherwise MultiCopy_Int.
+@@ -115,6 +130,10 @@ void LoadTexPltt(const void *src, u32 destSlotAddr, u32 size){
+     }
+ }
+ 
++/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
++   names coincide; MSVC keeps both under different decorations): the port's
++   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+ // @symbol _ZN2GX14EndLoadTexPlttEv
+ void EndLoadTexPltt(){
+     u32 dmaId = data_02099fd0;
+@@ -125,5 +144,6 @@ void EndLoadTexPltt(){
+     data_020a60b4 = 0;
+     data_020a60b0 = 0;
+ }
++#endif
+ 
+ }
+diff --git a/src/engine/heap/Heap.cpp b/src/engine/heap/Heap.cpp
+index 519ce74..b6c5694 100644
+--- a/src/engine/heap/Heap.cpp
++++ b/src/engine/heap/Heap.cpp
+@@ -82,8 +82,11 @@ extern "C" {
+    replace the CRT's for the whole PC port, and port/hal already answers the
+    DS spellings the headers reference (_ZdlPv and Memory's two operators).
+    Only the two unnamed veneers have no host bridge, so the host gets them
+-   over the same default heap. Nothing here reaches mwccarm. */
+-#ifdef _MSC_VER
++   over the same default heap. Nothing here reaches mwccarm.
++   SM64DS_PLATFORM_PC as well as _MSC_VER: under GCC/Clang the DS branch would
++   define the real ::operator new/delete and take over every C++ allocation in
++   the port (std::vector included) before the game heap even exists. */
++#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
+ extern "C" void *func_0203cc0c(u32 size) {
+     return Memory::defaultHeapPtr->Allocate(size);
+ }
+diff --git a/src/engine/model/ModelComponents.cpp b/src/engine/model/ModelComponents.cpp
+index 375a473..d5b3041 100644
+--- a/src/engine/model/ModelComponents.cpp
++++ b/src/engine/model/ModelComponents.cpp
+@@ -712,6 +712,10 @@ void func_02044534(char* self, int index, Mtx43* mtx, Vec3* light)
+ }
+ }
+ 
++/* PC hosts build port/unmatched/ModelComponents_Render.cpp instead: this
++   matched walk leaves the material index in r1 for func_02044b30, a register
++   contract only the DS ABI honours (see that file). */
++#if !defined(SM64DS_PLATFORM_PC)
+ // @symbol _ZN15ModelComponents6RenderEP9Matrix4x3P7Vector3
+ void ModelComponents::Render(Matrix4x3 *mat, Vector3 *vec) {
+     data_020a4bd4 = 1u << (((RenderInfo *)modelFile)->field0 + 12);
+@@ -750,3 +754,4 @@ void ModelComponents::Render(Matrix4x3 *mat, Vector3 *vec) {
+         } while (i < ((RenderInfo *)modelFile)->count);
+     }
+ }
++#endif /* !SM64DS_PLATFORM_PC */
+diff --git a/src/engine/model/d_ext_model.cpp b/src/engine/model/d_ext_model.cpp
+index e91c3fd..9a0ed79 100644
+--- a/src/engine/model/d_ext_model.cpp
++++ b/src/engine/model/d_ext_model.cpp
+@@ -73,7 +73,7 @@ ModelComponents *func_02016e70(BMD_File *file);
+ /* local extern: no header declares it; delete veneer for the transforms and
+    blend buffers */
+ void func_0203cbc0(void *ptr);
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
+ /* local extern: host only. ::operator new is the CRT's on the PC port, but
+    Memory::operator_delete2 hands this block back to the DS default heap, so
+    the host allocates it from that heap directly (src/engine/heap/Heap.cpp
+@@ -182,7 +182,7 @@ struct CommonModelData {
+     void *buffer;                /* 0x08 */
+ };
+ 
+-#ifdef _MSC_VER
++#ifdef _MSC_VER   /* MSVC only: GCC/Clang emit the Itanium D0 themselves */
+ /* THE HOST NEEDS THE ROM'S FLAT D0 NAME, AND MSVC NEVER EMITS IT. MSVC
+  * folds the Itanium destructor variants into the one ~dExtFrameCtrl_c() it
+  * emits, so this arm spells out, in terms of the destructor defined
+@@ -286,7 +286,7 @@ extern "C" ModelComponents *func_02016e70(BMD_File *file) {
+ 
+     e = (CommonModelData *)dExtSimpleModel_c::AddToCommonModelDataArr(*file);
+     if (e->components == 0) {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
+         e->components = (ModelComponents *)func_0203cc0c(0x14);
+ #else
+         e->components = (ModelComponents *)::operator new(0x14);

@@ -94,7 +94,7 @@ namespace {
 constexpr uint32_t GXFIFO = 0x04000400u;
 
 void copy_words(const uint32_t *src, uint32_t *dst, int n) {
-    if (reinterpret_cast<uintptr_t>(dst) == GXFIFO) {
+    if (ntr::is_ds(reinterpret_cast<uintptr_t>(dst), GXFIFO)) {
         const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(src)));
         for (int i = 0; i < n; ++i) ntr::gx_write_fifo(s[i]);
     } else {
@@ -117,7 +117,7 @@ extern "C" void Copy36Bytes(int *src, int *dst) {
 // ever used against the FIFO; for a memory destination the DS semantics would
 // overwrite the same three words four times, so a memory dst is a bug here.
 extern "C" void Copy48BytesFixed(int *src, int *dst) {
-    if (reinterpret_cast<uintptr_t>(dst) == 0x04000400u) {
+    if (ntr::is_ds(reinterpret_cast<uintptr_t>(dst), 0x04000400u)) {
         for (int i = 0; i < 12; ++i) ntr::gx_write_fifo(static_cast<uint32_t>(src[i]));
     } else {
         int *d = static_cast<int *>(ntr::host_ptr(reinterpret_cast<uintptr_t>(dst)));
@@ -128,7 +128,7 @@ extern "C" void Copy48BytesFixed(int *src, int *dst) {
 // The FIFO flush primitive: 32 no-writeback stmia of four zeroed registers,
 // 128 NOP command words that push any partially-packed command through.
 extern "C" void func_020553c0(unsigned addr) {
-    if (addr == 0x04000400u)
+    if (ntr::is_ds(addr, 0x04000400u))
         for (int i = 0; i < 128; ++i) ntr::gx_write_fifo(0);
 }
 
@@ -205,7 +205,7 @@ extern "C" void DMAStartTransfer(int ch, int src, int dst, int ctrl) {
     const int words = ctrl & 0x1FFFFF;
     copy_words(reinterpret_cast<const uint32_t *>(static_cast<uintptr_t>(src)),
                reinterpret_cast<uint32_t *>(static_cast<uintptr_t>(dst)), words);
-    if (static_cast<uintptr_t>(dst) == 0x04000400u) {
+    if (ntr::is_ds(static_cast<uintptr_t>(dst), 0x04000400u)) {
         if (ctrl & 0x40000000) {
             const unsigned h = data_020a60c4[ch & 7].handler;
             if (h) reinterpret_cast<void (*)(unsigned)>(h)(data_020a60c4[ch & 7].arg);

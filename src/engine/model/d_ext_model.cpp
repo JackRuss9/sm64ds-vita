@@ -73,7 +73,7 @@ ModelComponents *func_02016e70(BMD_File *file);
 /* local extern: no header declares it; delete veneer for the transforms and
    blend buffers */
 void func_0203cbc0(void *ptr);
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
 /* local extern: host only. ::operator new is the CRT's on the PC port, but
    Memory::operator_delete2 hands this block back to the DS default heap, so
    the host allocates it from that heap directly (src/engine/heap/Heap.cpp
@@ -182,7 +182,7 @@ struct CommonModelData {
     void *buffer;                /* 0x08 */
 };
 
-#ifdef _MSC_VER
+#ifdef _MSC_VER   /* MSVC only: GCC/Clang emit the Itanium D0 themselves */
 /* THE HOST NEEDS THE ROM'S FLAT D0 NAME, AND MSVC NEVER EMITS IT. MSVC
  * folds the Itanium destructor variants into the one ~dExtFrameCtrl_c() it
  * emits, so this arm spells out, in terms of the destructor defined
@@ -286,7 +286,7 @@ extern "C" ModelComponents *func_02016e70(BMD_File *file) {
 
     e = (CommonModelData *)dExtSimpleModel_c::AddToCommonModelDataArr(*file);
     if (e->components == 0) {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
         e->components = (ModelComponents *)func_0203cc0c(0x14);
 #else
         e->components = (ModelComponents *)::operator new(0x14);

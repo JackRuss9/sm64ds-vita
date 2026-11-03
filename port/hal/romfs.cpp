@@ -260,6 +260,40 @@ bool open(const char *rom_path,
     return ok;
 }
 
+uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
+    FILE *f = fopen(rom_path, "rb");
+    if (!f) return nullptr;
+    uint8_t hdr[0x30];
+    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return nullptr; }
+    // GBATEK header: 0x20 ARM9 ROM offset, 0x28 RAM address, 0x2C size.
+    const uint32_t off = rd32(hdr + 0x20), ram = rd32(hdr + 0x28), size = rd32(hdr + 0x2C);
+    uint8_t *raw = (size >= 8 && size < (64u << 20)) ? (uint8_t *)malloc(size) : nullptr;
+    if (!raw || fseek(f, (long)off, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
+        free(raw); fclose(f); return nullptr;
+    }
+    fclose(f);
+    // Like ndspy's code decompression: the BLZ footer may be followed by up to
+    // 0x1C bytes of appended data. Take the first plausible footer position.
+    size_t stream = 0;
+    for (size_t extra = 0; extra < 0x20 && extra + 8 <= size; extra += 4) {
+        const uint32_t word = rd32(raw + size - extra - 8);
+        const uint32_t hdr_len = word >> 24, enc_len = word & 0xFFFFFF;
+        if (hdr_len < 8 || enc_len > size) continue;
+        stream = size - extra;
+        break;
+    }
+    uint8_t *out = nullptr;
+    if (stream) {
+        out = blz_decompress(raw, stream, len);
+        free(raw);
+    } else {               // no footer at all: stored uncompressed
+        out = raw;
+        *len = size;
+    }
+    if (out) *ram_base = ram;
+    return out;
+}
+
 uint8_t *read_file(unsigned file_id, size_t *size) {
     if (!g_rom || file_id >= g_file_count) return nullptr;
     const uint32_t start = rd32(g_fat + file_id * 8), end = rd32(g_fat + file_id * 8 + 4);

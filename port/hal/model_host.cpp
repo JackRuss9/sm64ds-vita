@@ -10,6 +10,7 @@
 // - the texture-VRAM budget globals dExtSimpleModel_c::GetVramOffset bump-allocates
 //   from,
 // - storage for the render context globals the walk stores through.
+#include "ntr/mmio.h"   /* host_ptr: DS addresses -> host memory */
 #include <string.h>
 
 typedef unsigned int u32;
@@ -29,13 +30,14 @@ void func_020527e8(int *m, int sx, int sy, int sz)
 /* word copy primitive used by the VRAM upload CPU path */
 void MultiCopy_Int(int *src, int *dst, int len)
 {
-    memcpy(dst, src, len);
+    /* dst is a VRAM address on the texture-upload path: resolve both ends */
+    memcpy(::ntr::host_ptr((uintptr_t)dst), ::ntr::host_ptr((uintptr_t)src), len);
 }
 
 /* 32-byte-block copy primitive (asm on the DS) */
 void MultiCopy32Bytes(int *src, int *dst, int len)
 {
-    memcpy(dst, src, len);
+    memcpy(::ntr::host_ptr((uintptr_t)dst), ::ntr::host_ptr((uintptr_t)src), len);
 }
 
 // ---- OAM shadow state (BSS on the DS) -------------------------------------
@@ -141,12 +143,15 @@ int data_02099f24[4];
 int data_0209cefc[3 * 64];  /* 64 records x 0xc */
 int data_0209cef8[1];       /* record count */
 int data_0208e738[1] = { 1 };   /* nonzero: upload textures on registration */
+#if defined(_MSC_VER)   /* GCC/Clang emit the real Itanium vtables */
 int _ZTV11dExtModel_c[8];       /* dExtModel_c vtable storage; never dispatched */
+#endif
 int data_0209b3ec[12];      /* camera Matrix4x3 the render walk composes */
 
 // dExtSimpleModel_c's Itanium vtable storage: installed by the C ctor. The gates call
 // every method non-virtually (qualified), so plain zero slots are fine; if
 // anything ever dispatches through them it faults immediately and loudly.
+#if defined(_MSC_VER)   /* GCC/Clang: the compiler's own vtables, same layout as the ROM */
 void *_ZTV17dExtSimpleModel_c[8];
 // Same story for the animated-model hierarchy. The secondary (dExtFrameCtrl_c
 // at +0x50) table needs no storage here: on the DS it is _ZTV14dExtAnmModel_c
@@ -154,6 +159,7 @@ void *_ZTV17dExtSimpleModel_c[8];
 void *_ZTV15dExtFrameCtrl_c[8];
 void *_ZTV14dExtAnmModel_c[10];
 void *_ZTV4dBgW[13];   /* base: never dispatched in the gates */
+#endif
 unsigned char data_020a0c78[8]; /* the default CLPS ENTRY (8-byte storage,
                                    func_02037e9c fills it on first lookup) */
 
@@ -184,10 +190,12 @@ unsigned short data_02099f94[8];
 namespace GX {
 void LoadTex(const void *src, unsigned offset, unsigned size);
 }
+#if defined(_MSC_VER)   /* GCC/Clang: that C name IS GX::LoadTex */
 extern "C" void _ZN2GX7LoadTexEPKvjj(const void *s, unsigned o, unsigned z)
 {
     GX::LoadTex(s, o, z);
 }
+#endif
 
 // operator_new2 on the DS is a register-passthrough tail-call veneer to
 // func_0203cc0c; that shape breaks on cdecl (the callee would read the

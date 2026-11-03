@@ -31,6 +31,11 @@ bool open(const char *rom_path,
 // or a short read. *size receives the length.
 uint8_t *read_file(unsigned file_id, size_t *size);
 
+// The ARM9 main binary from `rom_path`, decompressed, malloc'd (caller frees).
+// *ram_base receives its load address (0x02004000 in SM64DS). Opens the ROM on
+// its own, so it works before (and independently of) open().
+uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len);
+
 // Nintendo's backward LZ ("BLZ"), the ARM9/overlay code compression. `src` is
 // the whole compressed file (footer included); returns the decompressed image,
 // malloc'd, or nullptr if the footer is inconsistent. Exposed for tests.

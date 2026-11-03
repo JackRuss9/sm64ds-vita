@@ -712,6 +712,10 @@ void func_02044534(char* self, int index, Mtx43* mtx, Vec3* light)
 }
 }
 
+/* PC hosts build port/unmatched/ModelComponents_Render.cpp instead: this
+   matched walk leaves the material index in r1 for func_02044b30, a register
+   contract only the DS ABI honours (see that file). */
+#if !defined(SM64DS_PLATFORM_PC)
 // @symbol _ZN15ModelComponents6RenderEP9Matrix4x3P7Vector3
 void ModelComponents::Render(Matrix4x3 *mat, Vector3 *vec) {
     data_020a4bd4 = 1u << (((RenderInfo *)modelFile)->field0 + 12);
@@ -750,3 +754,4 @@ void ModelComponents::Render(Matrix4x3 *mat, Vector3 *vec) {
         } while (i < ((RenderInfo *)modelFile)->count);
     }
 }
+#endif /* !SM64DS_PLATFORM_PC */

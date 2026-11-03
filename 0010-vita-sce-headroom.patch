@@ -1,0 +1,19 @@
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index 5b77d2a..3b3b91e 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -48,6 +48,14 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-q")
+ # slices compile whole translation units whose other members call into parts of
+ # the game no gate links yet; like MSVC, the linker only follows what is used.
+ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
++# vita-elf-create appends its SCE module data (module info, import stubs) right
++# after the text segment. The VitaSDK linker script 64 KiB-aligns the data
++# segment and, before that, adds __sce_headroom if it is defined: without it, a
++# text segment that happens to end just below a 64 KiB boundary leaves too
++# little room ("Cannot allocate N bytes for SCE data at end of segment 0;
++# segment 1 overlaps" -- hit on gate 3b). 16 KiB covers far more imports than
++# any gate has; the cost is at most one extra 64 KiB of address space.
++set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--defsym,__sce_headroom=0x4000")
+ 
+ # Read a slice manifest (one src path per line, # comments) into a list.
+ function(sm64ds_read_slice manifest out_var)

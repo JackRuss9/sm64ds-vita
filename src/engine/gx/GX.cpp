@@ -34,6 +34,10 @@ extern void MultiCopy_Int(int *src, int *dst, int len);
 
 namespace GX {
 
+/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+   names coincide; MSVC keeps both under different decorations): the port's
+   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
 // @symbol _ZN2GX12BeginLoadTexEv
 void BeginLoadTex() {
     int r = GX::ResetBankForTex();
@@ -43,6 +47,7 @@ void BeginLoadTex() {
     data_020a60bc = (int)*(u16 *)((char *)data_02086326 + i) << 12;
     data_020a60c0 = (int)*(u16 *)((char *)data_02086328 + i) << 12;
 }
+#endif
 
 // VRAM texture upload with banked destination: below-top goes to the base
 // window, above-top to the secondary bank, straddling splits into two DMA (or
@@ -82,6 +87,10 @@ void LoadTex(const void *src, unsigned int offset, unsigned int size) {
 
 // Ends a banked texture upload: waits on the upload DMA channel if one is
 // active, restores the texture bank, then clears the four upload-window globals.
+/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+   names coincide; MSVC keeps both under different decorations): the port's
+   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
 // @symbol _ZN2GX10EndLoadTexEv
 void EndLoadTex()
 {
@@ -94,13 +103,19 @@ void EndLoadTex()
     data_020a60ac = 0;
     data_020a60b8 = 0;
 }
+#endif
 
+/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+   names coincide; MSVC keeps both under different decorations): the port's
+   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
 // @symbol _ZN2GX16BeginLoadTexPlttEv
 void BeginLoadTexPltt() {
     int r = GX::ResetBankForTexPltt();
     data_020a60b4 = r;
     data_020a60b0 = (int)data_02086314[r >> 4] << 12;
 }
+#endif
 
 // Loads a texture palette into VRAM: async DMA when a channel is configured
 // (data_02099fd0 != -1), otherwise MultiCopy_Int.
@@ -115,6 +130,10 @@ void LoadTexPltt(const void *src, u32 destSlotAddr, u32 size){
     }
 }
 
+/* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+   names coincide; MSVC keeps both under different decorations): the port's
+   VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
 // @symbol _ZN2GX14EndLoadTexPlttEv
 void EndLoadTexPltt(){
     u32 dmaId = data_02099fd0;
@@ -125,5 +144,6 @@ void EndLoadTexPltt(){
     data_020a60b4 = 0;
     data_020a60b0 = 0;
 }
+#endif
 
 }
