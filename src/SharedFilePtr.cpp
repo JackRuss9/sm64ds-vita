@@ -82,7 +82,7 @@ void Crash(void);
 int myFS_ReadFile(void *a, void *b, unsigned int c);
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 // @symbol func_02017e48
 extern "C" void *func_02017e48(void *self, unsigned int fileID) {
     func_02017e0c(self, fileID);
@@ -106,7 +106,7 @@ extern "C" void func_02017e0c(void *self, unsigned int fileID) {
     handle->fileID = func_02018a24(fileID);
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 /* Resolve fileID to its bytes, either already resident in the overlay-file
    table or streamed from the card, decompress them if they are LZ-tagged,
    and stash and return the buffer. */
@@ -215,7 +215,7 @@ void SharedFilePtr::Release() {
     func_02017c24(this);
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 // @symbol func_02017b4c
 extern "C" void *func_02017b4c(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);
@@ -229,7 +229,7 @@ extern "C" int SharedFilePtr_Destruct_Clsn(int self) {
 }
 #endif
 
-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE8)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8)
 /* Loads a KCL collision file; the first holder rebases its offsets. */
 // @symbol _ZN7dBgW_Kc8LoadFileER13SharedFilePtr
 char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
@@ -246,7 +246,7 @@ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 // @symbol func_02017ae4
 extern "C" void *func_02017ae4(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);
@@ -278,7 +278,7 @@ void SharedFilePtr::ReallocateModelFile() {
 }
 #endif
 
-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE4B)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
 /* Loads a BMD model. The first holder rebases its offsets, registers it in
    the common model data array, and trims its allocation to the real size. */
 // @symbol _ZN17dExtSimpleModel_c8LoadFileER13SharedFilePtr
@@ -295,7 +295,7 @@ void *dExtSimpleModel_c::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 // @symbol func_02017a24
 extern "C" void *func_02017a24(void *self, unsigned int fileID) {
     func_02017ae4(self, fileID);
@@ -339,7 +339,7 @@ extern "C" int SharedFilePtr_Destruct_Anim(int self) {
 }
 #endif
 
-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE4B)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
 /* Loads a BCA animation; the first holder rebases its offsets. */
 // @symbol _ZN15dExtFrameCtrl_c8LoadFileER13SharedFilePtr
 char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
@@ -356,7 +356,7 @@ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
 // @symbol SharedFilePtr_Construct_TexSeq
 extern "C" void *SharedFilePtr_Construct_TexSeq(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);

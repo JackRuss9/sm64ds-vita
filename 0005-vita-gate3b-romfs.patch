@@ -1,0 +1,584 @@
+diff --git a/port/hal/fs.cpp b/port/hal/fs.cpp
+index ce88ebe..d5a2bdb 100644
+--- a/port/hal/fs.cpp
++++ b/port/hal/fs.cpp
+@@ -36,17 +36,31 @@ typedef unsigned short u16;
+ typedef unsigned char u8;
+ #include "SharedFilePtr.h"
+ 
++// MSVC-only: under GCC/Clang these C spellings ARE the member symbols, so
++// each forwarder would call itself forever.
++#if defined(_MSC_VER)
+ extern "C" {
+ void *_ZN13SharedFilePtr8LoadFileEv(SharedFilePtr *self)
+ { return self->SharedFilePtr::LoadFile(); }
+ void _ZN13SharedFilePtr7ReleaseEv(SharedFilePtr *self)
+ { self->SharedFilePtr::Release(); }
+ }
++#endif
+ 
+ #ifndef PORT_REPO_ROOT
+ #define PORT_REPO_ROOT "."
+ #endif
+ 
++// SM64DS_FS_ROM: read everything straight from the user's .nds (hal/romfs.cpp)
++// instead of the extracted tree + catalog TSVs. The console builds use it; the
++// PC build keeps the extracted-tree backend unless it opts in.
++#ifdef SM64DS_FS_ROM
++#include "romfs.h"
++#ifndef SM64DS_ROM_PATH
++#define SM64DS_ROM_PATH "ux0:data/sm64ds/sm64ds.nds"
++#endif
++#endif
++
+ // ---- the asset catalog ---------------------------------------------------
+ enum { MAX_FILES = 4096, MAX_HANDLES = 4096, PATH_MAX_ = 260 };
+ 
+@@ -60,6 +74,19 @@ static const char *asset_root(void)
+     return env ? env : PORT_REPO_ROOT;
+ }
+ 
++#ifdef SM64DS_FS_ROM
++static void rom_on_file(unsigned id, const char *path, void *)
++{
++    if (id < MAX_FILES && strlen(path) < PATH_MAX_)
++        strcpy(g_paths[id], path);
++}
++static void rom_on_handle(unsigned h, unsigned id, void *)
++{
++    if (h < MAX_HANDLES)
++        g_handle_to_id[h] = (u16)id;
++}
++#endif
++
+ static void catalog_load(void)
+ {
+     char line[512], path[PATH_MAX_];
+@@ -67,6 +94,19 @@ static void catalog_load(void)
+     if (g_catalog_loaded)
+         return;
+     g_catalog_loaded = 1;
++#ifdef SM64DS_FS_ROM
++    (void)line; (void)path; (void)f;
++    {
++        const char *rom = getenv("SM64DS_ROM");
++        if (!rom) rom = SM64DS_ROM_PATH;
++        if (!romfs::open(rom, rom_on_file, rom_on_handle, nullptr)) {
++            fprintf(stderr, "FATAL: could not read the game from %s\n"
++                    "       copy your own EUR cartridge dump there\n", rom);
++            abort();
++        }
++    }
++    return;
++#endif
+ 
+     snprintf(path, sizeof path, "%s/build/assets/files.tsv", asset_root());
+     f = fopen(path, "r");
+@@ -107,7 +147,9 @@ void *Allocate(u32 size);
+ void *Allocate(u32 size, int align);
+ void Deallocate(void *p);
+ }
++#if defined(_MSC_VER)   // GCC/Clang: this IS Memory::Deallocate (Heap.cpp)
+ extern "C" void _ZN6Memory10DeallocateEPv(void *p) { Memory::Deallocate(p); }
++#endif
+ 
+ extern "C" {
+ u32 data_0209d3bc; /* last fileID touched; the game's FS breadcrumb */
+@@ -168,6 +210,19 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
+                 self->fileID);
+         abort();
+     }
++#ifdef SM64DS_FS_ROM
++    {
++        size_t n = 0;
++        raw = romfs::read_file(self->fileID, &n);
++        if (!raw) {
++            fprintf(stderr, "fs: short read from ROM: file %u (%s)\n",
++                    self->fileID, g_paths[self->fileID]);
++            return 0;
++        }
++        fsize = (long)n;
++        (void)path; (void)f;
++    }
++#else
+     snprintf(path, sizeof path, "%s/extracted/dsd/files/%s",
+              asset_root(), g_paths[self->fileID]);
+     f = fopen(path, "rb");
+@@ -188,6 +243,7 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
+         return 0; /* real Load returns 0 on a short read */
+     }
+     fclose(f);
++#endif
+ 
+     if (fsize > 8 && memcmp(raw, "LZ77", 4) == 0) {
+         u32 dec = (raw[4] | raw[5] << 8 | raw[6] << 16 | (u32)raw[7] << 24) >> 8;
+@@ -220,7 +276,11 @@ struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
+    one spelling forwarding to the other. */
+ #include "SharedFilePtr.h"
+ 
++// MSVC-only: under GCC/Clang the extern "C" seam above already IS this
++// member's symbol (_ZN13SharedFilePtr4LoadEv), so a second body would collide.
++#if defined(_MSC_VER)
+ void *SharedFilePtr::Load()
+ {
+     return _ZN13SharedFilePtr4LoadEv((struct SharedFilePtrC *)this);
+ }
++#endif
+diff --git a/port/hal/romfs.cpp b/port/hal/romfs.cpp
+new file mode 100644
+index 0000000..2cfae80
+--- /dev/null
++++ b/port/hal/romfs.cpp
+@@ -0,0 +1,272 @@
++// Read game assets straight out of the user's .nds dump. See romfs.h.
++//
++// Formats are from GBATEK ("DS Cartridge Header", "DS Cartridge NitroROM and
++// NitroARC File Systems", "DS Encryption/Compression"), cross-checked against
++// ndspy, the library tools/asset_catalog.py uses. No SDK or emulator code.
++#include "romfs.h"
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++namespace romfs {
++namespace {
++
++// The game's handle table, as tools/asset_catalog.py names it: visible in the
++// target image and in its matched initializer, InitializeAssetHandleTable.
++constexpr uint32_t OV000_HANDLE_TABLE_ADDRESS = 0x020BD4B8u;
++constexpr uint32_t OV000_HANDLE_COUNT = 0x80Au;
++
++// Cartridge header words (GBATEK "DS Cartridge Header").
++constexpr uint32_t HDR_GAME_CODE = 0x0C;
++constexpr uint32_t HDR_FNT_OFF = 0x40, HDR_FNT_SIZE = 0x44;
++constexpr uint32_t HDR_FAT_OFF = 0x48, HDR_FAT_SIZE = 0x4C;
++constexpr uint32_t HDR_OVT9_OFF = 0x50, HDR_OVT9_SIZE = 0x54;
++
++FILE *g_rom = nullptr;
++long g_rom_size = 0;
++uint8_t *g_fat = nullptr;     // 8 bytes per file: start, end (absolute)
++uint32_t g_file_count = 0;
++
++inline uint32_t rd32(const uint8_t *p) {
++    return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
++}
++inline uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
++
++// Read [off, off+len) of the image, malloc'd; nullptr if out of range.
++uint8_t *read_span(uint32_t off, uint32_t len) {
++    if ((long)off > g_rom_size || (long)len > g_rom_size - (long)off) return nullptr;
++    uint8_t *buf = (uint8_t *)malloc(len ? len : 1);
++    if (!buf) return nullptr;
++    if (fseek(g_rom, (long)off, SEEK_SET) != 0 || fread(buf, 1, len, g_rom) != len) {
++        free(buf);
++        return nullptr;
++    }
++    return buf;
++}
++
++// Walk one FNT directory, reporting every file under its full path.
++// GBATEK: the main table has 8 bytes per directory (u32 sub-table offset,
++// u16 first file id, u16 parent id); a sub-table entry is a type/length byte
++// -- 0 ends it, 1..0x7F a file name of that length, 0x81..0xFF a directory
++// name of length-0x80 followed by its u16 id (0xF000 | index).
++bool walk_dir(const uint8_t *fnt, uint32_t fnt_size, unsigned dir_index,
++              const char *prefix, int depth,
++              void (*on_file)(unsigned, const char *, void *), void *ctx) {
++    if (depth > 32 || (dir_index + 1) * 8 > fnt_size) return false;
++    const uint8_t *e = fnt + dir_index * 8;
++    uint32_t sub = rd32(e);
++    unsigned file_id = rd16(e + 4);
++    char path[512];
++    while (sub < fnt_size) {
++        uint8_t type = fnt[sub++];
++        if (type == 0) return true;
++        unsigned len = type & 0x7F;
++        if (len == 0 || sub + len > fnt_size) return false;
++        snprintf(path, sizeof path, "%s%.*s", prefix, (int)len, (const char *)fnt + sub);
++        sub += len;
++        if (type & 0x80) {
++            if (sub + 2 > fnt_size) return false;
++            unsigned child = rd16(fnt + sub) & 0x0FFF;
++            sub += 2;
++            size_t n = strlen(path);
++            if (n + 1 >= sizeof path) return false;
++            path[n] = '/'; path[n + 1] = 0;
++            if (!walk_dir(fnt, fnt_size, child, path, depth + 1, on_file, ctx)) return false;
++        } else {
++            on_file(file_id++, path, ctx);
++        }
++    }
++    return false;   // ran off the table without a terminator
++}
++
++// Path -> file id lookup for the handle table, built during the FNT walk.
++struct PathIndex {
++    char **paths = nullptr;  // by file id
++    unsigned count = 0;
++};
++
++void index_file(unsigned id, const char *path, void *ctx) {
++    PathIndex *ix = (PathIndex *)ctx;
++    if (id < ix->count && !ix->paths[id]) ix->paths[id] = strdup(path);
++}
++
++void close_all() {
++    if (g_rom) fclose(g_rom);
++    g_rom = nullptr;
++    free(g_fat);
++    g_fat = nullptr;
++    g_file_count = 0;
++}
++
++}  // namespace
++
++uint8_t *blz_decompress(const uint8_t *src, size_t src_len, size_t *out_len) {
++    // Footer (last 8 bytes): u32 enc_len | hdr_len << 24, u32 inc_len.
++    // The first (src_len - enc_len) bytes are stored plain; the compressed
++    // stream is read BACKWARDS from (src_len - hdr_len) down to that point,
++    // and the output is written backwards from its end.
++    if (src_len < 8) return nullptr;
++    uint32_t inc_len = rd32(src + src_len - 4);
++    if (inc_len == 0) {              // "not actually compressed"
++        uint8_t *out = (uint8_t *)malloc(src_len);
++        if (!out) return nullptr;
++        memcpy(out, src, src_len);
++        *out_len = src_len;
++        return out;
++    }
++    uint32_t word = rd32(src + src_len - 8);
++    uint32_t hdr_len = word >> 24, enc_len = word & 0xFFFFFF;
++    if (enc_len > src_len || hdr_len < 8 || hdr_len > enc_len) return nullptr;
++    size_t dec_start = src_len - enc_len;     // plain prefix length
++    size_t raw_len = src_len + inc_len;
++    uint8_t *out = (uint8_t *)malloc(raw_len);
++    if (!out) return nullptr;
++    memcpy(out, src, src_len);                 // prefix (and scratch) in place
++
++    size_t in = src_len - hdr_len;             // read cursor, moves down
++    size_t w = raw_len;                        // write cursor, moves down
++    while (w > dec_start && in > dec_start) {
++        uint8_t flags = src[--in];
++        for (int bit = 0; bit < 8 && w > dec_start; ++bit, flags <<= 1) {
++            if (!(flags & 0x80)) {
++                if (in <= dec_start) break;
++                out[--w] = src[--in];
++                continue;
++            }
++            if (in < dec_start + 2) { free(out); return nullptr; }
++            uint32_t pair = (uint32_t)src[--in] << 8;
++            pair |= src[--in];
++            uint32_t len = (pair >> 12) + 3;
++            uint32_t disp = (pair & 0x0FFF) + 3;
++            while (len-- && w > dec_start) {
++                --w;
++                if (w + disp >= raw_len) { free(out); return nullptr; }
++                out[w] = out[w + disp];
++            }
++        }
++    }
++    *out_len = raw_len;
++    return out;
++}
++
++bool open(const char *rom_path,
++          void (*on_file)(unsigned, const char *, void *),
++          void (*on_handle)(unsigned, unsigned, void *),
++          void *ctx) {
++    close_all();
++    g_rom = fopen(rom_path, "rb");
++    if (!g_rom) {
++        fprintf(stderr, "romfs: cannot open ROM: %s\n", rom_path);
++        return false;
++    }
++    fseek(g_rom, 0, SEEK_END);
++    g_rom_size = ftell(g_rom);
++
++    uint8_t *hdr = read_span(0, 0x200);
++    if (!hdr) {
++        fprintf(stderr, "romfs: %s is too small to be a DS ROM\n", rom_path);
++        close_all();
++        return false;
++    }
++    char code[5] = {0};
++    memcpy(code, hdr + HDR_GAME_CODE, 4);
++    if (memcmp(code, "ASM", 3) != 0) {
++        fprintf(stderr, "romfs: game code %s is not Super Mario 64 DS (ASM*)\n", code);
++    } else if (code[3] != 'P') {
++        fprintf(stderr, "romfs: game code %s: this port is verified against the EUR "
++                        "build (ASMP); other regions may not match\n", code);
++    }
++    const uint32_t fnt_off = rd32(hdr + HDR_FNT_OFF), fnt_size = rd32(hdr + HDR_FNT_SIZE);
++    const uint32_t fat_off = rd32(hdr + HDR_FAT_OFF), fat_size = rd32(hdr + HDR_FAT_SIZE);
++    const uint32_t ovt_off = rd32(hdr + HDR_OVT9_OFF), ovt_size = rd32(hdr + HDR_OVT9_SIZE);
++    free(hdr);
++
++    g_fat = read_span(fat_off, fat_size);
++    uint8_t *fnt = read_span(fnt_off, fnt_size);
++    uint8_t *ovt = read_span(ovt_off, ovt_size);
++    if (!g_fat || !fnt || !ovt || fat_size % 8 || ovt_size < 32) {
++        fprintf(stderr, "romfs: header tables out of range (FNT/FAT/OVT)\n");
++        free(fnt); free(ovt); close_all();
++        return false;
++    }
++    g_file_count = fat_size / 8;
++
++    // Names: report every file, and keep an index for the handle table.
++    PathIndex ix;
++    ix.count = g_file_count;
++    ix.paths = (char **)calloc(g_file_count, sizeof(char *));
++    struct Both { PathIndex *ix; void (*cb)(unsigned, const char *, void *); void *ctx; } both{&ix, on_file, ctx};
++    auto report = [](unsigned id, const char *path, void *c) {
++        Both *b = (Both *)c;
++        index_file(id, path, b->ix);
++        if (b->cb) b->cb(id, path, b->ctx);
++    };
++    bool ok = walk_dir(fnt, fnt_size, 0, "", 0, report, &both);
++    free(fnt);
++    if (!ok) fprintf(stderr, "romfs: malformed file name table\n");
++
++    // Overlay 0: the first 32-byte OVT record. ram address at +4, file id at
++    // +0x18, u32 at +0x1C = compressed size (low 24 bits) | flags << 24 with
++    // bit 0 = BLZ-compressed.
++    if (ok) {
++        const uint32_t ov_ram = rd32(ovt + 4), ov_file = rd32(ovt + 0x18);
++        const uint32_t ov_flags = rd32(ovt + 0x1C) >> 24;
++        const uint32_t ov_comp_size = rd32(ovt + 0x1C) & 0xFFFFFF;
++        size_t ov_len = 0;
++        uint8_t *ov = read_file(ov_file, &ov_len);
++        if (ov && (ov_flags & 1)) {
++            // The OVT's compressed size bounds the stream: the FAT entry can
++            // carry alignment padding after the BLZ footer.
++            size_t stream = (ov_comp_size && ov_comp_size <= ov_len) ? ov_comp_size : ov_len;
++            size_t dec_len = 0;
++            uint8_t *dec = blz_decompress(ov, stream, &dec_len);
++            free(ov);
++            ov = dec;
++            ov_len = dec_len;
++        }
++        const uint32_t table = OV000_HANDLE_TABLE_ADDRESS - ov_ram;
++        if (!ov || OV000_HANDLE_TABLE_ADDRESS < ov_ram ||
++            (size_t)table + OV000_HANDLE_COUNT * 4 > ov_len) {
++            fprintf(stderr, "romfs: overlay 0 does not hold the asset-handle table "
++                            "(wrong game or region?)\n");
++            ok = false;
++        }
++        for (uint32_t h = 0; ok && h < OV000_HANDLE_COUNT; ++h) {
++            uint32_t ptr = rd32(ov + table + h * 4);
++            if (ptr < ov_ram || ptr - ov_ram >= ov_len) {
++                fprintf(stderr, "romfs: handle 0x%x has an invalid path pointer\n", h);
++                ok = false;
++                break;
++            }
++            const char *name = (const char *)ov + (ptr - ov_ram);
++            size_t room = ov_len - (ptr - ov_ram);
++            if (!memchr(name, 0, room)) { ok = false; break; }
++            unsigned id = 0;
++            while (id < ix.count && !(ix.paths[id] && strcmp(ix.paths[id], name) == 0)) ++id;
++            if (id == ix.count) {
++                fprintf(stderr, "romfs: handle 0x%x names a missing file: %s\n", h, name);
++                ok = false;
++                break;
++            }
++            if (on_handle) on_handle(h, id, ctx);
++        }
++        free(ov);
++    }
++    free(ovt);
++    for (unsigned i = 0; i < ix.count; ++i) free(ix.paths[i]);
++    free(ix.paths);
++    if (!ok) close_all();
++    return ok;
++}
++
++uint8_t *read_file(unsigned file_id, size_t *size) {
++    if (!g_rom || file_id >= g_file_count) return nullptr;
++    const uint32_t start = rd32(g_fat + file_id * 8), end = rd32(g_fat + file_id * 8 + 4);
++    if (end < start) return nullptr;
++    uint8_t *p = read_span(start, end - start);
++    if (p) *size = end - start;
++    return p;
++}
++
++}  // namespace romfs
+diff --git a/port/hal/romfs.h b/port/hal/romfs.h
+new file mode 100644
+index 0000000..cc84664
+--- /dev/null
++++ b/port/hal/romfs.h
+@@ -0,0 +1,41 @@
++// Read game assets straight out of the user's .nds cartridge dump.
++//
++// The PC port reads files that tools/asset_catalog.py and dsd extracted
++// beforehand (build/assets/*.tsv + extracted/dsd/files/). On a console that
++// means copying thousands of loose files, so this backend opens the ROM itself
++// and serves the same two things the catalog provides:
++//
++//   * FAT file id -> path and bytes      (cartridge header -> FNT + FAT)
++//   * ov0 handle  -> FAT file id         (the game's own handle table in
++//                                         overlay 0, BLZ-decompressed here)
++//
++// Same facts asset_catalog.py reads with ndspy, same validation spirit: a
++// ROM that is not the EUR build fails loudly at open, not with plausible data.
++#ifndef SM64DS_PORT_ROMFS_H
++#define SM64DS_PORT_ROMFS_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++namespace romfs {
++
++// Open the ROM and build both tables. Callbacks receive every named file and
++// every handle; ids outside [0, max) are the caller's to reject. Returns false
++// with a message on stderr if the image is missing or is not the expected game.
++bool open(const char *rom_path,
++          void (*on_file)(unsigned file_id, const char *path, void *ctx),
++          void (*on_handle)(unsigned handle, unsigned file_id, void *ctx),
++          void *ctx);
++
++// Bytes of FAT file `file_id`, malloc'd (caller frees). nullptr on a bad id
++// or a short read. *size receives the length.
++uint8_t *read_file(unsigned file_id, size_t *size);
++
++// Nintendo's backward LZ ("BLZ"), the ARM9/overlay code compression. `src` is
++// the whole compressed file (footer included); returns the decompressed image,
++// malloc'd, or nullptr if the footer is inconsistent. Exposed for tests.
++uint8_t *blz_decompress(const uint8_t *src, size_t src_len, size_t *out_len);
++
++}  // namespace romfs
++
++#endif
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index ea6e334..347202f 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -74,7 +74,7 @@ endfunction()
+ # One gate = its smoke test (main renamed), its HAL files, its slice, the
+ # launcher, packed into a VPK with its own title ID.
+ function(sm64ds_vita_gate name title_id label test_src)
+-    cmake_parse_arguments(G "" "" "HAL;SLICES" ${ARGN})
++    cmake_parse_arguments(G "" "" "HAL;SLICES;DEFINES" ${ARGN})
+     set(srcs "")
+     foreach(manifest IN LISTS G_SLICES)
+         sm64ds_read_slice(${manifest} slice)
+@@ -86,6 +86,10 @@ function(sm64ds_vita_gate name title_id label test_src)
+     foreach(h IN LISTS G_HAL)
+         list(APPEND hal "${PORT_DIR}/${h}")
+     endforeach()
++    # HAL diagnostics (e.g. "ROM not found") go to the same log as the test.
++    # src/ stays untouched: only port-owned files get the redirect.
++    set_source_files_properties(${hal} PROPERTIES
++        COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
+ 
+     set(test "${PORT_DIR}/${test_src}")
+     set_source_files_properties("${test}" PROPERTIES
+@@ -96,6 +100,9 @@ function(sm64ds_vita_gate name title_id label test_src)
+     target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include")
+     target_compile_definitions(${name} PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="${name}")
+     target_compile_options(${name} PRIVATE ${SM64DS_FLAGS})
++    if(G_DEFINES)
++        target_compile_definitions(${name} PRIVATE ${G_DEFINES})
++    endif()
+ 
+     vita_create_self(${name}.self ${name})
+     vita_create_vpk(${name}.vpk ${title_id} ${name}.self
+@@ -120,3 +127,13 @@ sm64ds_vita_gate(gate2 SMDS00002 "SM64DS Gate 2" tests/smoke_heap.cpp
+ sm64ds_vita_gate(gate3a SMDS00003 "SM64DS Gate 3a" tests/smoke_roots.cpp
+     HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
+     SLICES slice_gate2.txt slice_gate3a.txt)
++
++# Gate 3b: real game files through SharedFilePtr, read straight from the
++# cartridge dump (hal/romfs.cpp) -- copy your own EUR .nds to
++# ux0:data/sm64ds/sm64ds.nds. smoke_fs's expected values were computed from
++# that ROM, so a PASS cross-checks the reader against the real data.
++sm64ds_vita_gate(gate3b SMDS00004 "SM64DS Gate 3b" tests/smoke_fs.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp
++        hal/fs.cpp hal/romfs.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt
++    DEFINES SM64DS_FS_ROM)
+diff --git a/src/SharedFilePtr.cpp b/src/SharedFilePtr.cpp
+index 901c426..6cb9da0 100644
+--- a/src/SharedFilePtr.cpp
++++ b/src/SharedFilePtr.cpp
+@@ -82,7 +82,7 @@ void Crash(void);
+ int myFS_ReadFile(void *a, void *b, unsigned int c);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol func_02017e48
+ extern "C" void *func_02017e48(void *self, unsigned int fileID) {
+     func_02017e0c(self, fileID);
+@@ -106,7 +106,7 @@ extern "C" void func_02017e0c(void *self, unsigned int fileID) {
+     handle->fileID = func_02018a24(fileID);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ /* Resolve fileID to its bytes, either already resident in the overlay-file
+    table or streamed from the card, decompress them if they are LZ-tagged,
+    and stash and return the buffer. */
+@@ -215,7 +215,7 @@ void SharedFilePtr::Release() {
+     func_02017c24(this);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol func_02017b4c
+ extern "C" void *func_02017b4c(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);
+@@ -229,7 +229,7 @@ extern "C" int SharedFilePtr_Destruct_Clsn(int self) {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE8)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8)
+ /* Loads a KCL collision file; the first holder rebases its offsets. */
+ // @symbol _ZN7dBgW_Kc8LoadFileER13SharedFilePtr
+ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
+@@ -246,7 +246,7 @@ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol func_02017ae4
+ extern "C" void *func_02017ae4(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);
+@@ -278,7 +278,7 @@ void SharedFilePtr::ReallocateModelFile() {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE4B)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
+ /* Loads a BMD model. The first holder rebases its offsets, registers it in
+    the common model data array, and trims its allocation to the real size. */
+ // @symbol _ZN17dExtSimpleModel_c8LoadFileER13SharedFilePtr
+@@ -295,7 +295,7 @@ void *dExtSimpleModel_c::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol func_02017a24
+ extern "C" void *func_02017a24(void *self, unsigned int fileID) {
+     func_02017ae4(self, fileID);
+@@ -339,7 +339,7 @@ extern "C" int SharedFilePtr_Destruct_Anim(int self) {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) || defined(SM64DS_PORT_GATE4B)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
+ /* Loads a BCA animation; the first holder rebases its offsets. */
+ // @symbol _ZN15dExtFrameCtrl_c8LoadFileER13SharedFilePtr
+ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
+@@ -356,7 +356,7 @@ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol SharedFilePtr_Construct_TexSeq
+ extern "C" void *SharedFilePtr_Construct_TexSeq(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);

@@ -17,6 +17,13 @@ extern "C" {
 // The single real storage. Memory::rootHeapIterator is a NestedHeapIterator
 // (a list head); the decomp TUs address it as a blob. 0x20 covers the
 // evidenced fields with room; the ctor initializes it.
+// Aligned: the blob is used as a struct, and ARM (the Vita) faults on unaligned
+// LDM/LDRD, which a char array's alignment of 1 would allow.
+#if defined(_MSC_VER)
+__declspec(align(8))
+#else
+__attribute__((aligned(8)))
+#endif
 char _ZN6Memory16rootHeapIteratorE[0x20];
 int _ZN6Memory25isRootHeapIterInitializedE;
 
@@ -44,6 +51,20 @@ void MultiStore_Int(int val, int *dst, int len)
 // (@@3DA) the line above covers. Both are references to one address on the NDS.
 #pragma comment(linker, "/alternatename:?data_020a4d38@@3UNestedHeapIterator@@A=__ZN6Memory16rootHeapIteratorE")
 
+// The same by-address identity for GCC/Clang hosts (Linux, the Vita's
+// arm-vita-eabi): ELF symbol aliases instead of MSVC /alternatename. Names are
+// plain C here, so one alias per historical name covers every reference.
+#if !defined(_MSC_VER)
+extern "C" {
+extern char data_020a4d38[0x20] __attribute__((alias("_ZN6Memory16rootHeapIteratorE")));
+extern int data_020a4d34 __attribute__((alias("_ZN6Memory25isRootHeapIterInitializedE")));
+}
+#endif
+
+#if defined(_MSC_VER)  /* every bridge below is MSVC-only: on Itanium-ABI hosts
+   (GCC/Clang, arm-vita-eabi) `this` rides in the first argument register and
+   the C spellings ARE the C++ symbols, so these would redefine them -- and the
+   C1 placement-new bridges would recurse into themselves. */
 // FUNCTION BRIDGES where aliasing would be a silent ABI bug: C TUs call the
 // iterator entry points as __cdecl free functions under Itanium names, but
 // the .cpp TUs define them as __thiscall METHODS (this in ecx). An
@@ -145,6 +166,7 @@ ExpandingHeapAllocator *_ZN22ExpandingHeapAllocatorC1EPvj(
     ExpandingHeapAllocator *self, void *heapEnd, u32 flags)
 { return ::new ((void *)self) ExpandingHeapAllocator(heapEnd, flags); }
 }
+#endif  /* _MSC_VER bridges */
 
 // MemoryNode::Target's constructor, same seam again. ExpandingHeapAllocator's
 // constructor and Reallocate both build one on the stack under the C1 spelling.
@@ -152,9 +174,11 @@ ExpandingHeapAllocator *_ZN22ExpandingHeapAllocatorC1EPvj(
 // callers drop it.
 #include "MemoryNode.h"
 
+#if defined(_MSC_VER)
 extern "C" MemoryNode::Target *_ZN10MemoryNode6TargetC1EPS_(
     MemoryNode::Target *self, MemoryNode *node)
 { return ::new ((void *)self) MemoryNode::Target(node); }
+#endif
 
 // cstd::abs under its C spelling, which ExpandingHeapAllocator::MaxAllocatableSize
 // references. The forwarder was in hal/gx_upload_bridge.cpp and moved here with
@@ -174,4 +198,7 @@ int abs(int x)
 }
 }
 
+// MSVC-only bridge: on Itanium-ABI hosts this IS cstd::abs above.
+#if defined(_MSC_VER)
 extern "C" int _ZN4cstd3absEi(int value) { return cstd::abs(value); }
+#endif

@@ -21,8 +21,9 @@ typedef signed long long   s64;
    parameter to 'operator new' must be 'size_t'". Neither arm below is visible
    to the other compiler, so no ROM byte moves: mwccarm keeps the `unsigned
    long` the nine actor headers already declared. */
-#ifdef _MSC_VER
-#include <stddef.h>          /* the host's own size_t, so the host rule holds by definition */
+#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
+#include <stddef.h>          /* the host's own size_t, so the host rule holds by definition
+                                (any host compiler: GCC/Clang on ARM EABI use unsigned int) */
 #else
 typedef unsigned long size_t;
 #endif

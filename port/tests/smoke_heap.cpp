@@ -37,7 +37,14 @@ static u32 lcg(void) { return lcg_state = lcg_state * 1664525u + 1013904223u; }
 int main(void)
 {
     /* These are two names for the same DS address, never two host globals. */
-    CHECK(&data_020a4d34 == &_ZN6Memory25isRootHeapIterInitializedE);
+    /* Compared through volatile so GCC/Clang cannot fold it to false: two
+       distinct declarations are distinct objects to the optimizer, even when
+       the linker aliases them to one address (MSVC never folds it). */
+    {
+        void *volatile alias_a = &data_020a4d34;
+        void *volatile alias_b = &_ZN6Memory25isRootHeapIterInitializedE;
+        CHECK(alias_a == alias_b);
+    }
 
     void *arena = malloc(ARENA);
     CHECK(arena != NULL);

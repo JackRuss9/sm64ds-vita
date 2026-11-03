@@ -39,9 +39,13 @@ extern "C" void _ZN6Memory16operator_delete2EPv(void *ptr)
 
 // The class headers call Memory::operator_delete2. mwcc mangles that to the
 // Itanium name above. MSVC decorates the namespace function on its own, so the
-// host link needs this definition as well as the Itanium spelling.
+// host link needs this definition as well as the Itanium spelling. Itanium-ABI
+// hosts (GCC/Clang: Linux, macOS, the Vita's arm-vita-eabi) mangle the namespace
+// function to the exact string above, so there a second body is a redefinition.
+#if defined(_MSC_VER)
 namespace Memory {
 void operator_delete2(void *ptr) {
     ::operator delete(ptr);
 }
 }
+#endif

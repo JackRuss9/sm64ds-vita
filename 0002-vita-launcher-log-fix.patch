@@ -1,0 +1,80 @@
+diff --git a/port/vita/vita_main.cpp b/port/vita/vita_main.cpp
+index d529c79..8e1d89d 100644
+--- a/port/vita/vita_main.cpp
++++ b/port/vita/vita_main.cpp
+@@ -10,6 +10,12 @@
+ //                                   so a crash still leaves the lines before it
+ //   ux0:data/sm64ds/results.txt  -- one PASS/FAIL line per run, appended
+ //
++// The log is opened ONCE and both streams are pointed at that one FILE.
++// The first version freopen()ed stdout and stderr onto the same path
++// separately; on the console that produced the file but left it empty, so
++// this version does not depend on freopen at all. newlib (VitaSDK) and glibc
++// both let stdout/stderr be assigned.
++//
+ // SM64DS_LOG_DIR can be overridden at build time to test this wrapper on a
+ // desktop or under QEMU, where "ux0:" does not exist.
+ #include <stdio.h>
+@@ -24,31 +30,43 @@
+ 
+ int sm64ds_test_main();   // the gate's renamed main(void)
+ 
+-int main()
++static void append_result(const char *line_status, int rc)
+ {
+-    const char *log_path = SM64DS_LOG_DIR "/" SM64DS_GATE_NAME ".log";
+-    const char *results_path = SM64DS_LOG_DIR "/results.txt";
++    if (FILE *r = fopen(SM64DS_LOG_DIR "/results.txt", "a")) {
++        fprintf(r, "%s: %s (exit %d)\n", SM64DS_GATE_NAME, line_status, rc);
++        fclose(r);
++    }
++}
+ 
++int main()
++{
+     mkdir("ux0:data", 0777);       // exists on every console; harmless if so
+     mkdir(SM64DS_LOG_DIR, 0777);
+ 
+-    // Both streams in append mode on one fresh file, both unbuffered: their
+-    // lines stay in the order they were printed and nothing waits in a buffer
+-    // if the gate faults.
+-    remove(log_path);
+-    if (!freopen(log_path, "a", stdout) || !freopen(log_path, "a", stderr))
+-        return 2;                  // nowhere to report to
+-    setvbuf(stdout, nullptr, _IONBF, 0);
+-    setvbuf(stderr, nullptr, _IONBF, 0);
++    FILE *log = fopen(SM64DS_LOG_DIR "/" SM64DS_GATE_NAME ".log", "w");
++    if (!log) {
++        append_result("NO-LOG", -1);
++        return 0;
++    }
++    setvbuf(log, nullptr, _IONBF, 0);   // nothing waits in a buffer if it faults
++
++    // Marker written straight to the FILE, before any redirection: if the log
++    // has this line and nothing after it, the redirection is what failed.
++    fprintf(log, "== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
++
++    FILE *old_out = stdout, *old_err = stderr;
++    stdout = log;
++    stderr = log;
++    printf("-- stdout redirected\n");
+ 
+-    printf("== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
+     const int rc = sm64ds_test_main();
+-    printf("== %s finished: exit code %d (%s) ==\n",
+-           SM64DS_GATE_NAME, rc, rc == 0 ? "PASS" : "FAIL");
+ 
+-    if (FILE *r = fopen(results_path, "a")) {
+-        fprintf(r, "%s: %s (exit %d)\n", SM64DS_GATE_NAME, rc == 0 ? "PASS" : "FAIL", rc);
+-        fclose(r);
+-    }
+-    return 0;   // returning lets newlib close the files and exit the process
++    stdout = old_out;
++    stderr = old_err;
++    fprintf(log, "== %s finished: exit code %d (%s) ==\n",
++            SM64DS_GATE_NAME, rc, rc == 0 ? "PASS" : "FAIL");
++    fclose(log);
++
++    append_result(rc == 0 ? "PASS" : "FAIL", rc);
++    return 0;
+ }

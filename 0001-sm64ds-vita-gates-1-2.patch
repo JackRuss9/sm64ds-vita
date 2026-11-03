@@ -1,0 +1,361 @@
+diff --git a/include/types.h b/include/types.h
+index 9d96a92..60e46e7 100644
+--- a/include/types.h
++++ b/include/types.h
+@@ -21,8 +21,9 @@ typedef signed long long   s64;
+    parameter to 'operator new' must be 'size_t'". Neither arm below is visible
+    to the other compiler, so no ROM byte moves: mwccarm keeps the `unsigned
+    long` the nine actor headers already declared. */
+-#ifdef _MSC_VER
+-#include <stddef.h>          /* the host's own size_t, so the host rule holds by definition */
++#if defined(_MSC_VER) || defined(SM64DS_PLATFORM_PC)
++#include <stddef.h>          /* the host's own size_t, so the host rule holds by definition
++                                (any host compiler: GCC/Clang on ARM EABI use unsigned int) */
+ #else
+ typedef unsigned long size_t;
+ #endif
+diff --git a/port/hal/heap_globals.cpp b/port/hal/heap_globals.cpp
+index bffe1d1..439b1e1 100644
+--- a/port/hal/heap_globals.cpp
++++ b/port/hal/heap_globals.cpp
+@@ -17,6 +17,13 @@ extern "C" {
+ // The single real storage. Memory::rootHeapIterator is a NestedHeapIterator
+ // (a list head); the decomp TUs address it as a blob. 0x20 covers the
+ // evidenced fields with room; the ctor initializes it.
++// Aligned: the blob is used as a struct, and ARM (the Vita) faults on unaligned
++// LDM/LDRD, which a char array's alignment of 1 would allow.
++#if defined(_MSC_VER)
++__declspec(align(8))
++#else
++__attribute__((aligned(8)))
++#endif
+ char _ZN6Memory16rootHeapIteratorE[0x20];
+ int _ZN6Memory25isRootHeapIterInitializedE;
+ 
+@@ -44,6 +51,20 @@ void MultiStore_Int(int val, int *dst, int len)
+ // (@@3DA) the line above covers. Both are references to one address on the NDS.
+ #pragma comment(linker, "/alternatename:?data_020a4d38@@3UNestedHeapIterator@@A=__ZN6Memory16rootHeapIteratorE")
+ 
++// The same by-address identity for GCC/Clang hosts (Linux, the Vita's
++// arm-vita-eabi): ELF symbol aliases instead of MSVC /alternatename. Names are
++// plain C here, so one alias per historical name covers every reference.
++#if !defined(_MSC_VER)
++extern "C" {
++extern char data_020a4d38[0x20] __attribute__((alias("_ZN6Memory16rootHeapIteratorE")));
++extern int data_020a4d34 __attribute__((alias("_ZN6Memory25isRootHeapIterInitializedE")));
++}
++#endif
++
++#if defined(_MSC_VER)  /* every bridge below is MSVC-only: on Itanium-ABI hosts
++   (GCC/Clang, arm-vita-eabi) `this` rides in the first argument register and
++   the C spellings ARE the C++ symbols, so these would redefine them -- and the
++   C1 placement-new bridges would recurse into themselves. */
+ // FUNCTION BRIDGES where aliasing would be a silent ABI bug: C TUs call the
+ // iterator entry points as __cdecl free functions under Itanium names, but
+ // the .cpp TUs define them as __thiscall METHODS (this in ecx). An
+@@ -145,6 +166,7 @@ ExpandingHeapAllocator *_ZN22ExpandingHeapAllocatorC1EPvj(
+     ExpandingHeapAllocator *self, void *heapEnd, u32 flags)
+ { return ::new ((void *)self) ExpandingHeapAllocator(heapEnd, flags); }
+ }
++#endif  /* _MSC_VER bridges */
+ 
+ // MemoryNode::Target's constructor, same seam again. ExpandingHeapAllocator's
+ // constructor and Reallocate both build one on the stack under the C1 spelling.
+@@ -152,9 +174,11 @@ ExpandingHeapAllocator *_ZN22ExpandingHeapAllocatorC1EPvj(
+ // callers drop it.
+ #include "MemoryNode.h"
+ 
++#if defined(_MSC_VER)
+ extern "C" MemoryNode::Target *_ZN10MemoryNode6TargetC1EPS_(
+     MemoryNode::Target *self, MemoryNode *node)
+ { return ::new ((void *)self) MemoryNode::Target(node); }
++#endif
+ 
+ // cstd::abs under its C spelling, which ExpandingHeapAllocator::MaxAllocatableSize
+ // references. The forwarder was in hal/gx_upload_bridge.cpp and moved here with
+@@ -174,4 +198,7 @@ int abs(int x)
+ }
+ }
+ 
++// MSVC-only bridge: on Itanium-ABI hosts this IS cstd::abs above.
++#if defined(_MSC_VER)
+ extern "C" int _ZN4cstd3absEi(int value) { return cstd::abs(value); }
++#endif
+diff --git a/port/hal/mem_delete2.cpp b/port/hal/mem_delete2.cpp
+index 33484c7..7cf93c1 100644
+--- a/port/hal/mem_delete2.cpp
++++ b/port/hal/mem_delete2.cpp
+@@ -39,9 +39,13 @@ extern "C" void _ZN6Memory16operator_delete2EPv(void *ptr)
+ 
+ // The class headers call Memory::operator_delete2. mwcc mangles that to the
+ // Itanium name above. MSVC decorates the namespace function on its own, so the
+-// host link needs this definition as well as the Itanium spelling.
++// host link needs this definition as well as the Itanium spelling. Itanium-ABI
++// hosts (GCC/Clang: Linux, macOS, the Vita's arm-vita-eabi) mangle the namespace
++// function to the exact string above, so there a second body is a redefinition.
++#if defined(_MSC_VER)
+ namespace Memory {
+ void operator_delete2(void *ptr) {
+     ::operator delete(ptr);
+ }
+ }
++#endif
+diff --git a/port/hal/shims.cpp b/port/hal/shims.cpp
+index e02f41f..c62afff 100644
+--- a/port/hal/shims.cpp
++++ b/port/hal/shims.cpp
+@@ -5,6 +5,9 @@
+ 
+ // Native fader callers use the namespace interface. Keep the existing C
+ // divider as the host implementation shared with older callers.
++// MSVC-only bridge: on Itanium-ABI hosts (GCC/Clang, arm-vita-eabi) the C
++// spelling and the C++ function are the same symbol, so this would redefine it.
++#if defined(_MSC_VER)
+ extern "C" Fix12i _ZN4cstd4fdivEii(Fix12i numerator, Fix12i denominator);
+ namespace cstd {
+ Fix12i fdiv(Fix12i numerator, Fix12i denominator)
+@@ -12,6 +15,7 @@ Fix12i fdiv(Fix12i numerator, Fix12i denominator)
+     return _ZN4cstd4fdivEii(numerator, denominator);
+ }
+ }
++#endif
+ 
+ // The *D0Ev/*D1Ev translation units define Itanium-mangled destructor names
+ // as C functions -- that satisfies the NDS link, where the filename IS the
+@@ -43,11 +47,15 @@ void dFdBrightness_c::AdvanceFade() { AdvanceInterp(); }
+ 
+ // Retain the encoded C entry for legacy host callers. The fader now uses the
+ // native reference interface directly; both spellings reach the same helper.
++// MSVC-only bridge: on Itanium-ABI hosts (GCC/Clang, arm-vita-eabi) the C
++// spelling and the C++ function are the same symbol, so this would redefine it.
++#if defined(_MSC_VER)
+ int ApproachLinear(int &ref, int target, int step);
+ extern "C" void _Z14ApproachLinearRiii(Fix12i *value, Fix12i target, Fix12i step)
+ {
+     (void)ApproachLinear(*value, target, step);
+ }
++#endif
+ 
+ // Memory::operator_delete2 -- referenced from include/dFader_c.h's inline operator
+ // delete, and so from every dFader_c class here -- is defined in hal/mem_delete2.cpp.
+diff --git a/port/tests/smoke_heap.cpp b/port/tests/smoke_heap.cpp
+index a41ec42..3bd4eff 100644
+--- a/port/tests/smoke_heap.cpp
++++ b/port/tests/smoke_heap.cpp
+@@ -37,7 +37,14 @@ static u32 lcg(void) { return lcg_state = lcg_state * 1664525u + 1013904223u; }
+ int main(void)
+ {
+     /* These are two names for the same DS address, never two host globals. */
+-    CHECK(&data_020a4d34 == &_ZN6Memory25isRootHeapIterInitializedE);
++    /* Compared through volatile so GCC/Clang cannot fold it to false: two
++       distinct declarations are distinct objects to the optimizer, even when
++       the linker aliases them to one address (MSVC never folds it). */
++    {
++        void *volatile alias_a = &data_020a4d34;
++        void *volatile alias_b = &_ZN6Memory25isRootHeapIterInitializedE;
++        CHECK(alias_a == alias_b);
++    }
+ 
+     void *arena = malloc(ARENA);
+     CHECK(arena != NULL);
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+new file mode 100644
+index 0000000..44d4538
+--- /dev/null
++++ b/port/vita/CMakeLists.txt
+@@ -0,0 +1,113 @@
++# PS Vita build of the port's smoke gates (VitaSDK, arm-vita-eabi-gcc).
++#
++#   cmake -S port/vita -B build/vita
++#   cmake --build build/vita
++#
++# Produces one VPK per gate. Install with VitaShell, launch from the LiveArea,
++# then read ux0:data/sm64ds/<gate>.log (and results.txt for the summary).
++#
++# Gates 1 and 2 need no ROM. Gate 3 onward reads data extracted from your own
++# EUR cartridge dump and is not wired up here yet.
++#
++# Needs the host-ABI patch (types.h size_t, the MSVC-only bridges in port/hal)
++# that lets the port build with GCC/Clang; without it the link fails with
++# duplicate symbols.
++
++cmake_minimum_required(VERSION 3.16)
++
++if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
++    if(DEFINED ENV{VITASDK})
++        set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
++    else()
++        message(FATAL_ERROR "Set VITASDK (see https://vitasdk.org) before configuring.")
++    endif()
++endif()
++
++project(sm64ds-vita-gates C CXX)
++include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
++
++set(CMAKE_C_STANDARD 11)
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_EXTENSIONS ON)    # gnu++17: the decomp uses GNU extensions
++set(CMAKE_C_EXTENSIONS ON)
++if(NOT CMAKE_BUILD_TYPE)
++    set(CMAKE_BUILD_TYPE Release)
++endif()
++
++get_filename_component(PORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
++get_filename_component(REPO_DIR "${PORT_DIR}/.." ABSOLUTE)
++
++# The decomp's guest idioms (pointer<->u32 casts, type-punned struct access)
++# are deliberate. -fno-strict-aliasing keeps GCC from optimizing them away;
++# the warnings are silenced so a real error stays visible.
++set(SM64DS_FLAGS -fno-strict-aliasing -w)
++# vita_create_self needs the relocations kept in the ELF.
++set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-q")
++
++# Read a slice manifest (one src path per line, # comments) into a list.
++function(sm64ds_read_slice manifest out_var)
++    file(STRINGS "${PORT_DIR}/${manifest}" lines)
++    set(result "")
++    foreach(line IN LISTS lines)
++        string(STRIP "${line}" line)
++        if(line MATCHES "^#" OR line STREQUAL "")
++            continue()
++        endif()
++        list(APPEND result "${REPO_DIR}/${line}")
++    endforeach()
++    set(${out_var} "${result}" PARENT_SCOPE)
++endfunction()
++
++# Same rule as port/CMakeLists.txt: a .c file whose first line is exactly
++# //cpp is C++ to the matching toolchain, so it is C++ here too.
++function(sm64ds_honor_cpp_markers source_var)
++    foreach(source IN LISTS ${source_var})
++        if(source MATCHES "\\.c$")
++            file(STRINGS "${source}" first_line LIMIT_COUNT 1)
++            if(first_line STREQUAL "//cpp")
++                set_source_files_properties("${source}" PROPERTIES LANGUAGE CXX)
++            endif()
++        endif()
++    endforeach()
++endfunction()
++
++# One gate = its smoke test (main renamed), its HAL files, its slice, the
++# launcher, packed into a VPK with its own title ID.
++function(sm64ds_vita_gate name title_id label test_src)
++    cmake_parse_arguments(G "" "" "HAL;SLICES" ${ARGN})
++    set(srcs "")
++    foreach(manifest IN LISTS G_SLICES)
++        sm64ds_read_slice(${manifest} slice)
++        list(APPEND srcs ${slice})
++    endforeach()
++    list(REMOVE_DUPLICATES srcs)
++    sm64ds_honor_cpp_markers(srcs)
++    set(hal "")
++    foreach(h IN LISTS G_HAL)
++        list(APPEND hal "${PORT_DIR}/${h}")
++    endforeach()
++
++    set(test "${PORT_DIR}/${test_src}")
++    set_source_files_properties("${test}" PROPERTIES
++        COMPILE_DEFINITIONS "main=sm64ds_test_main")
++
++    add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${test}" ${hal} ${srcs})
++    target_include_directories(${name} PRIVATE "${PORT_DIR}" "${REPO_DIR}/include")
++    target_compile_definitions(${name} PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="${name}")
++    target_compile_options(${name} PRIVATE ${SM64DS_FLAGS})
++
++    vita_create_self(${name}.self ${name})
++    vita_create_vpk(${name}.vpk ${title_id} ${name}.self
++        VERSION 01.00
++        NAME "${label}")
++endfunction()
++
++# Gate 1: fx math, matrices, Timer, the dFader_c hierarchy.
++sm64ds_vita_gate(gate1 SMDS00001 "SM64DS Gate 1" tests/smoke.cpp
++    HAL hal/cstd_div.c hal/os_time.cpp hal/shims.cpp hal/mem_delete2.cpp
++    SLICES slice_gate1.txt)
++
++# Gate 2: ExpandingHeapAllocator, 5,000-op randomized torture.
++sm64ds_vita_gate(gate2 SMDS00002 "SM64DS Gate 2" tests/smoke_heap.cpp
++    HAL hal/heap_globals.cpp
++    SLICES slice_gate2.txt)
+diff --git a/port/vita/vita_main.cpp b/port/vita/vita_main.cpp
+new file mode 100644
+index 0000000..d529c79
+--- /dev/null
++++ b/port/vita/vita_main.cpp
+@@ -0,0 +1,54 @@
++// PS Vita launcher for the port's smoke gates.
++//
++// Each gate's own main() is compiled as sm64ds_test_main() (-Dmain=... on that
++// one file only). This wrapper gives it what a console app has on Windows: a
++// stdout/stderr it can print to. On the Vita that is a log file you open with
++// VitaShell, because a homebrew app has no console of its own.
++//
++// Output:
++//   ux0:data/sm64ds/<gate>.log   -- everything the gate printed, unbuffered,
++//                                   so a crash still leaves the lines before it
++//   ux0:data/sm64ds/results.txt  -- one PASS/FAIL line per run, appended
++//
++// SM64DS_LOG_DIR can be overridden at build time to test this wrapper on a
++// desktop or under QEMU, where "ux0:" does not exist.
++#include <stdio.h>
++#include <sys/stat.h>
++
++#ifndef SM64DS_GATE_NAME
++#error "define SM64DS_GATE_NAME (e.g. gate1)"
++#endif
++#ifndef SM64DS_LOG_DIR
++#define SM64DS_LOG_DIR "ux0:data/sm64ds"
++#endif
++
++int sm64ds_test_main();   // the gate's renamed main(void)
++
++int main()
++{
++    const char *log_path = SM64DS_LOG_DIR "/" SM64DS_GATE_NAME ".log";
++    const char *results_path = SM64DS_LOG_DIR "/results.txt";
++
++    mkdir("ux0:data", 0777);       // exists on every console; harmless if so
++    mkdir(SM64DS_LOG_DIR, 0777);
++
++    // Both streams in append mode on one fresh file, both unbuffered: their
++    // lines stay in the order they were printed and nothing waits in a buffer
++    // if the gate faults.
++    remove(log_path);
++    if (!freopen(log_path, "a", stdout) || !freopen(log_path, "a", stderr))
++        return 2;                  // nowhere to report to
++    setvbuf(stdout, nullptr, _IONBF, 0);
++    setvbuf(stderr, nullptr, _IONBF, 0);
++
++    printf("== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
++    const int rc = sm64ds_test_main();
++    printf("== %s finished: exit code %d (%s) ==\n",
++           SM64DS_GATE_NAME, rc, rc == 0 ? "PASS" : "FAIL");
++
++    if (FILE *r = fopen(results_path, "a")) {
++        fprintf(r, "%s: %s (exit %d)\n", SM64DS_GATE_NAME, rc == 0 ? "PASS" : "FAIL", rc);
++        fclose(r);
++    }
++    return 0;   // returning lets newlib close the files and exit the process
++}
+diff --git a/src/runtime/graphics/fader/d_fader.cpp b/src/runtime/graphics/fader/d_fader.cpp
+index ec66c31..8d19d3b 100644
+--- a/src/runtime/graphics/fader/d_fader.cpp
++++ b/src/runtime/graphics/fader/d_fader.cpp
+@@ -49,7 +49,7 @@ void Matrix4x3_ApplyInPlaceToRotationX(Matrix4x3 *m, short ang);
+ }
+ extern Matrix4x3 data_020a0e68;
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol _ZN8dFader_cD0Ev
+ // @symbol _ZN8dFader_cD1Ev
+ // @symbol _ZN8dFader_cD2Ev
+@@ -163,7 +163,7 @@ void dFader_c::AdvanceInterp()
+     ApproachLinear(currInterp, target, step);
+ }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+ // @symbol _ZN10dFdColor_cD0Ev
+ // @symbol _ZN10dFdColor_cD1Ev
+ // @symbol _ZN10dFdColor_cD2Ev

@@ -5,6 +5,9 @@
 
 // Native fader callers use the namespace interface. Keep the existing C
 // divider as the host implementation shared with older callers.
+// MSVC-only bridge: on Itanium-ABI hosts (GCC/Clang, arm-vita-eabi) the C
+// spelling and the C++ function are the same symbol, so this would redefine it.
+#if defined(_MSC_VER)
 extern "C" Fix12i _ZN4cstd4fdivEii(Fix12i numerator, Fix12i denominator);
 namespace cstd {
 Fix12i fdiv(Fix12i numerator, Fix12i denominator)
@@ -12,6 +15,7 @@ Fix12i fdiv(Fix12i numerator, Fix12i denominator)
     return _ZN4cstd4fdivEii(numerator, denominator);
 }
 }
+#endif
 
 // The *D0Ev/*D1Ev translation units define Itanium-mangled destructor names
 // as C functions -- that satisfies the NDS link, where the filename IS the
@@ -43,11 +47,15 @@ void dFdBrightness_c::AdvanceFade() { AdvanceInterp(); }
 
 // Retain the encoded C entry for legacy host callers. The fader now uses the
 // native reference interface directly; both spellings reach the same helper.
+// MSVC-only bridge: on Itanium-ABI hosts (GCC/Clang, arm-vita-eabi) the C
+// spelling and the C++ function are the same symbol, so this would redefine it.
+#if defined(_MSC_VER)
 int ApproachLinear(int &ref, int target, int step);
 extern "C" void _Z14ApproachLinearRiii(Fix12i *value, Fix12i target, Fix12i step)
 {
     (void)ApproachLinear(*value, target, step);
 }
+#endif
 
 // Memory::operator_delete2 -- referenced from include/dFader_c.h's inline operator
 // delete, and so from every dFader_c class here -- is defined in hal/mem_delete2.cpp.

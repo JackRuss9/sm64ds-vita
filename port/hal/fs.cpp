@@ -36,15 +36,29 @@ typedef unsigned short u16;
 typedef unsigned char u8;
 #include "SharedFilePtr.h"
 
+// MSVC-only: under GCC/Clang these C spellings ARE the member symbols, so
+// each forwarder would call itself forever.
+#if defined(_MSC_VER)
 extern "C" {
 void *_ZN13SharedFilePtr8LoadFileEv(SharedFilePtr *self)
 { return self->SharedFilePtr::LoadFile(); }
 void _ZN13SharedFilePtr7ReleaseEv(SharedFilePtr *self)
 { self->SharedFilePtr::Release(); }
 }
+#endif
 
 #ifndef PORT_REPO_ROOT
 #define PORT_REPO_ROOT "."
+#endif
+
+// SM64DS_FS_ROM: read everything straight from the user's .nds (hal/romfs.cpp)
+// instead of the extracted tree + catalog TSVs. The console builds use it; the
+// PC build keeps the extracted-tree backend unless it opts in.
+#ifdef SM64DS_FS_ROM
+#include "romfs.h"
+#ifndef SM64DS_ROM_PATH
+#define SM64DS_ROM_PATH "ux0:data/sm64ds/sm64ds.nds"
+#endif
 #endif
 
 // ---- the asset catalog ---------------------------------------------------
@@ -60,6 +74,19 @@ static const char *asset_root(void)
     return env ? env : PORT_REPO_ROOT;
 }
 
+#ifdef SM64DS_FS_ROM
+static void rom_on_file(unsigned id, const char *path, void *)
+{
+    if (id < MAX_FILES && strlen(path) < PATH_MAX_)
+        strcpy(g_paths[id], path);
+}
+static void rom_on_handle(unsigned h, unsigned id, void *)
+{
+    if (h < MAX_HANDLES)
+        g_handle_to_id[h] = (u16)id;
+}
+#endif
+
 static void catalog_load(void)
 {
     char line[512], path[PATH_MAX_];
@@ -67,6 +94,19 @@ static void catalog_load(void)
     if (g_catalog_loaded)
         return;
     g_catalog_loaded = 1;
+#ifdef SM64DS_FS_ROM
+    (void)line; (void)path; (void)f;
+    {
+        const char *rom = getenv("SM64DS_ROM");
+        if (!rom) rom = SM64DS_ROM_PATH;
+        if (!romfs::open(rom, rom_on_file, rom_on_handle, nullptr)) {
+            fprintf(stderr, "FATAL: could not read the game from %s\n"
+                    "       copy your own EUR cartridge dump there\n", rom);
+            abort();
+        }
+    }
+    return;
+#endif
 
     snprintf(path, sizeof path, "%s/build/assets/files.tsv", asset_root());
     f = fopen(path, "r");
@@ -107,7 +147,9 @@ void *Allocate(u32 size);
 void *Allocate(u32 size, int align);
 void Deallocate(void *p);
 }
+#if defined(_MSC_VER)   // GCC/Clang: this IS Memory::Deallocate (Heap.cpp)
 extern "C" void _ZN6Memory10DeallocateEPv(void *p) { Memory::Deallocate(p); }
+#endif
 
 extern "C" {
 u32 data_0209d3bc; /* last fileID touched; the game's FS breadcrumb */
@@ -168,6 +210,19 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
                 self->fileID);
         abort();
     }
+#ifdef SM64DS_FS_ROM
+    {
+        size_t n = 0;
+        raw = romfs::read_file(self->fileID, &n);
+        if (!raw) {
+            fprintf(stderr, "fs: short read from ROM: file %u (%s)\n",
+                    self->fileID, g_paths[self->fileID]);
+            return 0;
+        }
+        fsize = (long)n;
+        (void)path; (void)f;
+    }
+#else
     snprintf(path, sizeof path, "%s/extracted/dsd/files/%s",
              asset_root(), g_paths[self->fileID]);
     f = fopen(path, "rb");
@@ -188,6 +243,7 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
         return 0; /* real Load returns 0 on a short read */
     }
     fclose(f);
+#endif
 
     if (fsize > 8 && memcmp(raw, "LZ77", 4) == 0) {
         u32 dec = (raw[4] | raw[5] << 8 | raw[6] << 16 | (u32)raw[7] << 24) >> 8;
@@ -220,7 +276,11 @@ struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
    one spelling forwarding to the other. */
 #include "SharedFilePtr.h"
 
+// MSVC-only: under GCC/Clang the extern "C" seam above already IS this
+// member's symbol (_ZN13SharedFilePtr4LoadEv), so a second body would collide.
+#if defined(_MSC_VER)
 void *SharedFilePtr::Load()
 {
     return _ZN13SharedFilePtr4LoadEv((struct SharedFilePtrC *)this);
 }
+#endif

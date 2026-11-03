@@ -17,8 +17,10 @@
 // hybrid's gates existed to catch, and the port has no gate to catch it.
 #include <stdio.h>
 #include <stdlib.h>
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 #include "Heap.h"
 #include "ExpandingHeap.h"
 #include "ExpandingHeapAllocator.h"
@@ -29,6 +31,12 @@ void *Allocate(u32 size, int align, Heap *heap);
 /* No alias: `Heap' is now one type, struct mHeap::Heap_t, so the struct-vs-
    class decoration split this used to bridge cannot arise. */
 
+// MSVC-only bridges. On Itanium-ABI hosts (GCC/Clang, arm-vita-eabi) every
+// C spelling in this file IS the symbol the compiler emits for the C++
+// definition, `this' rides in the first argument register, and the compiler
+// generates the Itanium vtables the game expects -- so all of them would be
+// redefinitions there. Only the globals and Crash() are shared.
+#if defined(_MSC_VER)
 extern "C" {
 u32 _ZN22ExpandingHeapAllocator14SizeofInternalEPv(void *ptr)
 { return ExpandingHeapAllocator::SizeofInternal(ptr); }
@@ -40,6 +48,7 @@ Heap *_ZN5mHeap6Heap_t13SetupRootHeapEv()
 void *_ZN6Memory8AllocateEjiPN5mHeap6Heap_tE(u32 size, int align, Heap *heap)
 { return Memory::Allocate(size, align, heap); }
 }
+#endif
 
 // ---- globals the root-heap chain stores through --------------------------
 extern "C" {
@@ -52,33 +61,47 @@ int data_02099d90;     /* heap bring-up state flag */
 }
 
 // C references to Heap::Allocate/Deallocate -> the MSVC method definitions.
+#if defined(_MSC_VER)
 extern "C" {
 void *_ZN5mHeap6Heap_t8AllocateEji(void *self, u32 size, int align)
 { return ((Heap *)self)->Allocate(size, align); }
 void _ZN5mHeap6Heap_t10DeallocateEPv(void *self, void *p)
 { ((Heap *)self)->Deallocate(p); }
 }
+#endif
 
 // Memory::defaultHeapPtr is data_020a0ea0 by its address-name (data alias).
 // MSVC writes a variable's type into its decorated name, so this spelling
 // follows the class: `Heap' is a typedef for mHeap::Heap_t (include/Heap.h).
+#if defined(_MSC_VER)
 #pragma comment(linker, "/alternatename:?defaultHeapPtr@Memory@@3PAUHeap_t@mHeap@@A=_data_020a0ea0")
+#else
+// ELF spelling of the same by-address identity.
+extern "C" Heap *_ZN6Memory14defaultHeapPtrE __attribute__((alias("data_020a0ea0")));
+#endif
 
 // Crash(): the game's fatal stop. Loud on host. C linkage for the .c TUs;
 // the C++-linkage references alias onto the same definition.
 extern "C" void Crash(void)
 {
     fprintf(stderr, "FATAL: game Crash() reached\n");
+#if defined(_MSC_VER)
     void *frames[12];
     unsigned n = CaptureStackBackTrace(0, 12, frames, 0);
     char *base = (char *)GetModuleHandleA(0);
     for (unsigned i = 0; i < n; ++i)
         fprintf(stderr, "  frame %u: +0x%08x\n", i,
                 (unsigned)((char *)frames[i] - base));
+#else
+    fprintf(stderr, "  caller: %p\n", __builtin_return_address(0));
+#endif
     abort();
 }
+#if defined(_MSC_VER)
 #pragma comment(linker, "/alternatename:?Crash@@YAXXZ=_Crash")
+#endif
 
+#if defined(_MSC_VER)
 // Heap::Allocate(u32): the one-argument overload the allocator veneer path
 // uses (func_0203cc0c). Align 4, same as Memory::Allocate(u32)'s default.
 extern "C" void *_ZN5mHeap6Heap_t8AllocateEj(void *self, u32 size)
@@ -147,3 +170,4 @@ extern "C" SolidHeapAllocator *_ZN18SolidHeapAllocatorC1EPvj(
 {
     return ::new (self) SolidHeapAllocator(heapEnd, flags);
 }
+#endif  /* _MSC_VER: Allocate(u32) bridge, synthetic vtable, SolidHeapAllocator C1 */
