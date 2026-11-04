@@ -1,0 +1,158 @@
+diff --git a/port/tests/smoke_anim.cpp b/port/tests/smoke_anim.cpp
+index c7eaf92..f32f8ed 100644
+--- a/port/tests/smoke_anim.cpp
++++ b/port/tests/smoke_anim.cpp
+@@ -179,7 +179,11 @@ int main(void)
+     printf("  pixels covered: %d (%.1f%%)\n", drawn,
+            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
+     CHECK(drawn > 500);
++#if defined(SM64DS_OUT_DIR)
++    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_anim.bmp", fb);
++#else
+     ntr::ppu_write_bmp("smoke_anim.bmp", fb);
++#endif
+ 
+     if (g_failures) {
+         fprintf(stderr, "smoke_anim: %d FAILURE(S)\n", g_failures);
+diff --git a/port/tests/smoke_soak_anim.cpp b/port/tests/smoke_soak_anim.cpp
+index 14b004d..4e7352f 100644
+--- a/port/tests/smoke_soak_anim.cpp
++++ b/port/tests/smoke_soak_anim.cpp
+@@ -21,8 +21,20 @@
+ #include "ntr/gx.h"
+ #include "ntr/mmio.h"
+ 
++#if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
++#endif
++#if defined(SM64DS_FS_ROM)
++#include "Heap.h"
++#include "Memory.h"
++/* The catalog comes from the ROM itself (port/hal/fs.cpp's handle table). */
++extern "C" unsigned sm64ds_fs_handle_count(void);
++extern "C" const char *sm64ds_fs_handle_path(unsigned handle);
++/* Free bytes in the game's default heap. A virtual call: fine on GCC/Clang,
++   whose vtables are the ROM's Itanium layout (the MSVC port avoids it). */
++static unsigned heap_left(void) { return Memory::defaultHeapPtr->VMemoryLeft(); }
++#endif
+ 
+ extern "C" {
+ void _ZN17dExtSimpleModel_cC1Ev(void *self);
+@@ -110,12 +122,19 @@ static int run_pair(unsigned mh, unsigned ah, size_t *tris, int *frames_out)
+ 
+ static int run_pair_seh(unsigned mh, unsigned ah, size_t *tris, int *fr, unsigned *code)
+ {
++#if defined(_WIN32)
+     __try {
+         return run_pair(mh, ah, tris, fr);
+     } __except (1) {
+         *code = GetExceptionCode();
+         return -1;
+     }
++#else
++    /* No recoverable faults (on the PS Vita one ends the process): main logs
++       each animation before trying it, so the log's last line names a fault. */
++    (void)code;
++    return run_pair(mh, ah, tris, fr);
++#endif
+ }
+ 
+ static const char *dir_of(const char *p, char *buf)
+@@ -132,6 +151,24 @@ int main(int argc, char **argv)
+     if (!_ZN5mHeap6Heap_t13SetupRootHeapEv()) { fprintf(stderr, "no heap\n"); return 2; }
+     ident_fx(&data_0209b3ec);
+ 
++#if defined(SM64DS_FS_ROM)
++    /* same rows handles.tsv would give, kinds by suffix as asset_catalog.py */
++    const unsigned nh = sm64ds_fs_handle_count();
++    for (unsigned h = 0; h < nh && g_nrows < MAX_ROWS; ++h) {
++        const char *p = sm64ds_fs_handle_path(h);
++        if (!p) continue;
++        const size_t pl = strlen(p);
++        const char *kind = pl >= 4 && !strcmp(p + pl - 4, ".bmd") ? "model"
++                         : pl >= 4 && !strcmp(p + pl - 4, ".bca") ? "animation" : 0;
++        if (!kind || pl >= sizeof g_rows[0].path) continue;
++        Row *r = &g_rows[g_nrows++];
++        r->handle = h;
++        strcpy(r->path, p);
++        strcpy(r->kind, kind);
++    }
++    printf("  catalog: %d models+animations from the ROM; game heap free: %u KB\n",
++           g_nrows, heap_left() / 1024);
++#else
+     char path[512];
+     snprintf(path, sizeof path, "%s/build/assets/handles.tsv",
+              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
+@@ -147,6 +184,7 @@ int main(int argc, char **argv)
+             ++g_nrows;
+     }
+     fclose(f);
++#endif
+ 
+     const int limit = argc > 1 ? atoi(argv[1]) : 0;
+     int total = 0, ok = 0, skipped = 0, load_fail = 0, faulted = 0, empty = 0;
+@@ -155,6 +193,9 @@ int main(int argc, char **argv)
+             continue;
+         char adir[300], mdir[300];
+         dir_of(g_rows[i].path, adir);
++#if !defined(_WIN32)
++        printf("  try %s\n", g_rows[i].path);   /* before running: names a fault */
++#endif
+         /* sibling model with a matching skeleton: try every model in the dir
+            until one is compatible (run_pair returns 3 on mismatch) */
+         int r = 3;
+@@ -185,7 +226,14 @@ int main(int argc, char **argv)
+         } else {
+             ++ok;
+         }
++#if defined(SM64DS_FS_ROM)
++        if (total % 25 == 0)
++            printf("  -- %d pairs, game heap free: %u KB\n", total, heap_left() / 1024);
++#endif
+     }
++#if defined(SM64DS_FS_ROM)
++    printf("  game heap free at the end: %u KB\n", heap_left() / 1024);
++#endif
+     (void)skipped;
+ 
+     printf("anim soak: %d compatible pairs, %d animated+rendered, %d empty, "
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index 869141b..d58d650 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -336,3 +336,34 @@ sm64ds_vita_gate(gate4d SMDS00008 "SM64DS Gate 4d" tests/smoke_soak.cpp
+             SM64DS_TEST_MAIN_ARGS)
+ target_sources(gate4d PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+ target_link_libraries(gate4d PRIVATE ntr)
++
++# Gate 4c: the piano posed by its BCA (frame 0) through the game's walk.
++# Writes ux0:data/sm64ds/smoke_anim.bmp.
++sm64ds_vita_gate(gate4c SMDS00009 "SM64DS Gate 4c" tests/smoke_anim.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate4c PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate4c PRIVATE ntr)
++
++# Gate 5b: every animation with a skeleton-compatible sibling model, posed at
++# its first/middle/last frame and rendered. Logs each animation before it runs
++# and the game heap's free memory every 25 pairs (the PC run needs a 512 MB
++# arena because pairs leak by design; this measures what the Vita needs).
++sm64ds_vita_gate(gate5b SMDS00010 "SM64DS Gate 5b" tests/smoke_soak_anim.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT="."
++            SM64DS_VITA_HEAP_MB=192 SM64DS_HOST_ARENA_MB_DEFAULT=160
++            SM64DS_TEST_MAIN_ARGS)
++target_sources(gate5b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate5b PRIVATE ntr)

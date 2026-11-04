@@ -336,3 +336,34 @@ sm64ds_vita_gate(gate4d SMDS00008 "SM64DS Gate 4d" tests/smoke_soak.cpp
             SM64DS_TEST_MAIN_ARGS)
 target_sources(gate4d PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
 target_link_libraries(gate4d PRIVATE ntr)
+
+# Gate 4c: the piano posed by its BCA (frame 0) through the game's walk.
+# Writes ux0:data/sm64ds/smoke_anim.bmp.
+sm64ds_vita_gate(gate4c SMDS00009 "SM64DS Gate 4c" tests/smoke_anim.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
+        hal/romfs.cpp hal/romdata_rom.cpp
+        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
+    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
+    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
+    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
+            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
+            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+target_sources(gate4c PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+target_link_libraries(gate4c PRIVATE ntr)
+
+# Gate 5b: every animation with a skeleton-compatible sibling model, posed at
+# its first/middle/last frame and rendered. Logs each animation before it runs
+# and the game heap's free memory every 25 pairs (the PC run needs a 512 MB
+# arena because pairs leak by design; this measures what the Vita needs).
+sm64ds_vita_gate(gate5b SMDS00010 "SM64DS Gate 5b" tests/smoke_soak_anim.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
+        hal/romfs.cpp hal/romdata_rom.cpp
+        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
+    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
+    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
+    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
+            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT="."
+            SM64DS_VITA_HEAP_MB=192 SM64DS_HOST_ARENA_MB_DEFAULT=160
+            SM64DS_TEST_MAIN_ARGS)
+target_sources(gate5b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+target_link_libraries(gate5b PRIVATE ntr)

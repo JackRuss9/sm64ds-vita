@@ -179,7 +179,11 @@ int main(void)
     printf("  pixels covered: %d (%.1f%%)\n", drawn,
            100.0 * drawn / (ntr::SCREEN_W * ntr::SCREEN_H));
     CHECK(drawn > 500);
+#if defined(SM64DS_OUT_DIR)
+    ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_anim.bmp", fb);
+#else
     ntr::ppu_write_bmp("smoke_anim.bmp", fb);
+#endif
 
     if (g_failures) {
         fprintf(stderr, "smoke_anim: %d FAILURE(S)\n", g_failures);

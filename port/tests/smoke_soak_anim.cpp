@@ -21,8 +21,20 @@
 #include "ntr/gx.h"
 #include "ntr/mmio.h"
 
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
+#if defined(SM64DS_FS_ROM)
+#include "Heap.h"
+#include "Memory.h"
+/* The catalog comes from the ROM itself (port/hal/fs.cpp's handle table). */
+extern "C" unsigned sm64ds_fs_handle_count(void);
+extern "C" const char *sm64ds_fs_handle_path(unsigned handle);
+/* Free bytes in the game's default heap. A virtual call: fine on GCC/Clang,
+   whose vtables are the ROM's Itanium layout (the MSVC port avoids it). */
+static unsigned heap_left(void) { return Memory::defaultHeapPtr->VMemoryLeft(); }
+#endif
 
 extern "C" {
 void _ZN17dExtSimpleModel_cC1Ev(void *self);
@@ -110,12 +122,19 @@ static int run_pair(unsigned mh, unsigned ah, size_t *tris, int *frames_out)
 
 static int run_pair_seh(unsigned mh, unsigned ah, size_t *tris, int *fr, unsigned *code)
 {
+#if defined(_WIN32)
     __try {
         return run_pair(mh, ah, tris, fr);
     } __except (1) {
         *code = GetExceptionCode();
         return -1;
     }
+#else
+    /* No recoverable faults (on the PS Vita one ends the process): main logs
+       each animation before trying it, so the log's last line names a fault. */
+    (void)code;
+    return run_pair(mh, ah, tris, fr);
+#endif
 }
 
 static const char *dir_of(const char *p, char *buf)
@@ -132,6 +151,24 @@ int main(int argc, char **argv)
     if (!_ZN5mHeap6Heap_t13SetupRootHeapEv()) { fprintf(stderr, "no heap\n"); return 2; }
     ident_fx(&data_0209b3ec);
 
+#if defined(SM64DS_FS_ROM)
+    /* same rows handles.tsv would give, kinds by suffix as asset_catalog.py */
+    const unsigned nh = sm64ds_fs_handle_count();
+    for (unsigned h = 0; h < nh && g_nrows < MAX_ROWS; ++h) {
+        const char *p = sm64ds_fs_handle_path(h);
+        if (!p) continue;
+        const size_t pl = strlen(p);
+        const char *kind = pl >= 4 && !strcmp(p + pl - 4, ".bmd") ? "model"
+                         : pl >= 4 && !strcmp(p + pl - 4, ".bca") ? "animation" : 0;
+        if (!kind || pl >= sizeof g_rows[0].path) continue;
+        Row *r = &g_rows[g_nrows++];
+        r->handle = h;
+        strcpy(r->path, p);
+        strcpy(r->kind, kind);
+    }
+    printf("  catalog: %d models+animations from the ROM; game heap free: %u KB\n",
+           g_nrows, heap_left() / 1024);
+#else
     char path[512];
     snprintf(path, sizeof path, "%s/build/assets/handles.tsv",
              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
@@ -147,6 +184,7 @@ int main(int argc, char **argv)
             ++g_nrows;
     }
     fclose(f);
+#endif
 
     const int limit = argc > 1 ? atoi(argv[1]) : 0;
     int total = 0, ok = 0, skipped = 0, load_fail = 0, faulted = 0, empty = 0;
@@ -155,6 +193,9 @@ int main(int argc, char **argv)
             continue;
         char adir[300], mdir[300];
         dir_of(g_rows[i].path, adir);
+#if !defined(_WIN32)
+        printf("  try %s\n", g_rows[i].path);   /* before running: names a fault */
+#endif
         /* sibling model with a matching skeleton: try every model in the dir
            until one is compatible (run_pair returns 3 on mismatch) */
         int r = 3;
@@ -185,7 +226,14 @@ int main(int argc, char **argv)
         } else {
             ++ok;
         }
+#if defined(SM64DS_FS_ROM)
+        if (total % 25 == 0)
+            printf("  -- %d pairs, game heap free: %u KB\n", total, heap_left() / 1024);
+#endif
     }
+#if defined(SM64DS_FS_ROM)
+    printf("  game heap free at the end: %u KB\n", heap_left() / 1024);
+#endif
     (void)skipped;
 
     printf("anim soak: %d compatible pairs, %d animated+rendered, %d empty, "
