@@ -1,0 +1,233 @@
+diff --git a/port/ntr/rt.cpp b/port/ntr/rt.cpp
+index fed3114..0cd2115 100644
+--- a/port/ntr/rt.cpp
++++ b/port/ntr/rt.cpp
+@@ -11,42 +11,21 @@
+ #endif
+ 
+ // ---------------------------------------------------------------------------
+-// Fibers without an OS (PS Vita, and ARM Linux under QEMU for testing).
++// The game "fiber" on hosts without Windows fibers (PS Vita; Linux for tests).
+ //
+-// Windows has CreateFiber/SwitchToFiber. Elsewhere the same two-stack, one-at-
+-// a-time model is a handful of ARM instructions: save the registers the AAPCS
+-// says a callee must preserve (r4-r11, plus r12 to keep the frame 8-byte
+-// aligned, lr as the resume address, and VFP d8-d15), store sp, load the other
+-// stack's sp, restore, return into it. Exactly one fiber runs at any time, so
+-// nothing races, and no OS threads or semaphores are involved.
++// The game runs on its own OS thread, and the two threads hand a single turn
++// back and forth: exactly one of them runs at any moment, so this has the same
++// semantics as the Windows fibers -- no races, game control flow untouched.
+ //
+-//   ntr_ctx_switch(&save_sp, new_sp)
+-//
+-// The two VFP instructions are spelled as raw encodings (.inst) on purpose: a
+-// `.fpu' directive here would change the assembler's FPU for the REST of the
+-// translation unit and reject the NEON code the compiler emits after it.
+-//
+-// A new stack is primed with the same frame layout, its return address being
+-// the fiber's entry function, so the first switch "returns" into it.
++// Why a real thread and not a hand-rolled stack switch: on the PS Vita a
++// switch onto a malloc'd stack ran the game for eight frames and was then
++// stopped by the kernel (stop reason 0x10006) with sp outside the thread's
++// registered stack. A thread gives the game a stack the kernel itself created.
++// VitaSDK's pthread (pthread-embedded) creates native SceKernel threads.
+ // ---------------------------------------------------------------------------
+-#if !defined(_WIN32) && defined(__arm__)
+-#define NTR_ARM_FIBERS 1
+-extern "C" void ntr_ctx_switch(void **save_sp, void *new_sp);
+-__asm__(
+-    "   .text\n"
+-    "   .syntax unified\n"
+-    "   .arm\n"
+-    "   .align 2\n"
+-    "   .global ntr_ctx_switch\n"
+-    "   .type ntr_ctx_switch, %function\n"
+-    "ntr_ctx_switch:\n"
+-    "   push  {r4-r12, lr}\n"     /* 40 bytes */
+-    "   .inst 0xed2d8b10\n"       /* vpush {d8-d15}: 64 bytes, 104 total, 8-aligned */
+-    "   str   sp, [r0]\n"
+-    "   mov   sp, r1\n"
+-    "   .inst 0xecbd8b10\n"       /* vpop {d8-d15} */
+-    "   pop   {r4-r12, pc}\n"     /* interworking return (ARMv7) */
+-    "   .size ntr_ctx_switch, .-ntr_ctx_switch\n");
++#if !defined(_WIN32)
++#define NTR_THREAD_FIBERS 1
++#include <pthread.h>
+ #endif
+ 
+ namespace ntr {
+@@ -65,9 +44,9 @@ inline volatile uint16_t &reg16(uint32_t a) {
+ }
+ 
+ struct Runtime {
+-    void *host_fiber = nullptr;   // Windows: fiber handles; ARM: saved stack pointers
++    void *host_fiber = nullptr;   // Windows: fiber handles
+     void *game_fiber = nullptr;
+-    void *game_stack = nullptr;   // ARM: the game fiber's allocated stack
++    bool game_running = false;    // threads: the game thread exists
+     void (*entry)() = nullptr;
+     FrameHook hook = nullptr;
+     uint64_t frame = 0;
+@@ -86,25 +65,39 @@ void CALLBACK game_trampoline(void *) {
+     // The game returned. Hand control back for good.
+     for (;;) SwitchToFiber(g.host_fiber);
+ }
+-#elif defined(NTR_ARM_FIBERS)
+-void game_trampoline() {
+-    g.entry();
+-    g.game_done = true;
+-    for (;;) ntr_ctx_switch(&g.game_fiber, g.host_fiber);
++#elif defined(NTR_THREAD_FIBERS)
++// One turn token. `turn` says whose turn it is; each side waits for its own.
++enum Turn { HOST, GAME };
++// Initialised by function, not PTHREAD_*_INITIALIZER: not every embedded
++// pthread provides the static initialisers.
++pthread_mutex_t g_lock;
++pthread_cond_t g_cv;
++bool g_sync_ready = false;
++Turn g_turn = HOST;
++bool g_abandon = false;           // host stopped early: the game thread must exit
++
++void give_turn(Turn to) {         // caller holds g_lock
++    g_turn = to;
++    pthread_cond_broadcast(&g_cv);
++}
++void wait_turn(Turn mine) {       // caller holds g_lock
++    while (g_turn != mine) pthread_cond_wait(&g_cv, &g_lock);
+ }
+ 
+-// Stack size for the game fiber: the Windows build's 256 KB.
+-constexpr size_t GAME_STACK = 256 * 1024;
+-
+-// Prime a fresh stack so ntr_ctx_switch's restore half lands in `entry`:
+-// [d8-d15][r4-r12][pc], lowest address first, 8-byte aligned top.
+-void *prime_stack(void *stack, size_t size, void (*entry)()) {
+-    uintptr_t top = (reinterpret_cast<uintptr_t>(stack) + size) & ~uintptr_t(7);
+-    uint32_t *sp = reinterpret_cast<uint32_t *>(top) - 26;   // 16 + 9 + 1 words
+-    for (int i = 0; i < 25; ++i) sp[i] = 0;
+-    sp[25] = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(entry));
+-    return sp;
++void *game_thread(void *) {
++    pthread_mutex_lock(&g_lock);
++    wait_turn(GAME);
++    pthread_mutex_unlock(&g_lock);
++    if (!g_abandon) g.entry();
++    pthread_mutex_lock(&g_lock);
++    g.game_done = true;
++    give_turn(HOST);
++    pthread_mutex_unlock(&g_lock);
++    return nullptr;
+ }
++
++// The game thread's stack: generous, the Windows fiber had 256 KB.
++constexpr size_t GAME_STACK = 1024 * 1024;
+ #endif
+ 
+ // Advance the scanline counter across a frame. Anything spinning on VCOUNT --
+@@ -120,10 +113,15 @@ void rt_vblank_wait() {
+     if (!g.game_fiber) return;   // not running under rt_run; nothing to yield to
+     reg32(REG_IF) |= IRQ_VBLANK;
+     SwitchToFiber(g.host_fiber);
+-#elif defined(NTR_ARM_FIBERS)
+-    if (!g.game_stack) return;   // not running under rt_run; nothing to yield to
++#elif defined(NTR_THREAD_FIBERS)
++    if (!g.game_running) return;   // not running under rt_run; nothing to yield to
+     reg32(REG_IF) |= IRQ_VBLANK;
+-    ntr_ctx_switch(&g.game_fiber, g.host_fiber);
++    pthread_mutex_lock(&g_lock);
++    give_turn(HOST);
++    wait_turn(GAME);
++    const bool abandon = g_abandon;
++    pthread_mutex_unlock(&g_lock);
++    if (abandon) pthread_exit(nullptr);   // host stopped the loop: end this thread
+ #endif
+ }
+ 
+@@ -150,7 +148,7 @@ uint32_t rt_irq_restore(uint32_t prev) {
+ bool rt_irq_masked() { return g.cpsr_i != 0; }
+ 
+ uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
+-#if defined(NTR_ARM_FIBERS)
++#if defined(NTR_THREAD_FIBERS)
+     if (!io_init()) {
+         std::fprintf(stderr, "rt_run: io_init failed\n");
+         return 0;
+@@ -159,18 +157,34 @@ uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
+     g.entry = game;
+     g.hook = hook;
+     g.max_frames = max_frames;
+-    g.game_stack = std::malloc(GAME_STACK);
+-    if (!g.game_stack) {
+-        std::fprintf(stderr, "rt_run: cannot allocate the game fiber's stack\n");
++    if (!g_sync_ready) {
++        pthread_mutex_init(&g_lock, nullptr);
++        pthread_cond_init(&g_cv, nullptr);
++        g_sync_ready = true;
++    }
++    g_turn = HOST;
++    g_abandon = false;
++
++    pthread_attr_t attr;
++    pthread_attr_init(&attr);
++    pthread_attr_setstacksize(&attr, GAME_STACK);
++    pthread_t th;
++    const int rc = pthread_create(&th, &attr, game_thread, nullptr);
++    pthread_attr_destroy(&attr);
++    if (rc != 0) {
++        std::fprintf(stderr, "rt_run: cannot create the game thread (%d)\n", rc);
+         return 0;
+     }
+-    g.game_fiber = prime_stack(g.game_stack, GAME_STACK, game_trampoline);
++    g.game_running = true;
+ 
+     reg32(REG_IME) = 1;
+     reg32(REG_IE) = IRQ_VBLANK;
+ 
+     while (!g.game_done && !g.stop) {
+-        ntr_ctx_switch(&g.host_fiber, g.game_fiber);   // run until the game blocks
++        pthread_mutex_lock(&g_lock);          // run the game until it blocks
++        give_turn(GAME);
++        wait_turn(HOST);
++        pthread_mutex_unlock(&g_lock);
+         if (g.game_done) break;
+ 
+         run_scanlines();
+@@ -179,16 +193,15 @@ uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
+         if (g.max_frames && g.frame >= g.max_frames) g.stop = true;
+         reg32(REG_IF) &= ~IRQ_VBLANK;
+     }
+-    // A stopped (not finished) game fiber is simply abandoned, as DeleteFiber
+-    // does on Windows: its stack goes away with it.
+-    std::free(g.game_stack);
+-    g.game_stack = nullptr;
+-    g.game_fiber = nullptr;
++    if (!g.game_done) {                       // stopped early: release the game
++        pthread_mutex_lock(&g_lock);
++        g_abandon = true;
++        give_turn(GAME);
++        pthread_mutex_unlock(&g_lock);
++    }
++    pthread_join(th, nullptr);
++    g.game_running = false;
+     return g.frame;
+-#elif !defined(_WIN32)
+-    (void)game; (void)hook; (void)max_frames;
+-    std::fprintf(stderr, "rt_run: no fiber backend for this host\n");
+-    return 0;
+ #else
+     if (!io_init()) {
+         std::fprintf(stderr, "rt_run: io_init failed\n");
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index fddcb48..9f78660 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -216,6 +216,8 @@ add_library(ntr STATIC
+     ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp)
+ target_include_directories(ntr PUBLIC "${PORT_DIR}/ntr/include")
+ target_compile_definitions(ntr PUBLIC NTR_RELOCATE_REGIONS)
++# rt.cpp runs the game on its own thread (VitaSDK: pthread-embedded, native threads)
++target_link_libraries(ntr PUBLIC pthread)
+ target_compile_options(ntr PRIVATE ${SM64DS_FLAGS})
+ set_source_files_properties(
+     ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp

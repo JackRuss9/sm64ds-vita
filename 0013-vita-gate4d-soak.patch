@@ -1,0 +1,242 @@
+diff --git a/port/hal/fs.cpp b/port/hal/fs.cpp
+index d5a2bdb..39c4946 100644
+--- a/port/hal/fs.cpp
++++ b/port/hal/fs.cpp
+@@ -67,6 +67,7 @@ enum { MAX_FILES = 4096, MAX_HANDLES = 4096, PATH_MAX_ = 260 };
+ static char g_paths[MAX_FILES][PATH_MAX_]; /* by FAT file id */
+ static u16 g_handle_to_id[MAX_HANDLES];    /* ov0 handle -> FAT file id */
+ static int g_catalog_loaded;
++static unsigned g_handle_count;            /* handles the catalog defines */
+ 
+ static const char *asset_root(void)
+ {
+@@ -82,8 +83,10 @@ static void rom_on_file(unsigned id, const char *path, void *)
+ }
+ static void rom_on_handle(unsigned h, unsigned id, void *)
+ {
+-    if (h < MAX_HANDLES)
++    if (h < MAX_HANDLES) {
+         g_handle_to_id[h] = (u16)id;
++        if (h + 1 > g_handle_count) g_handle_count = h + 1;
++    }
+ }
+ #endif
+ 
+@@ -133,8 +136,10 @@ static void catalog_load(void)
+     fgets(line, sizeof line, f);
+     while (fgets(line, sizeof line, f)) {
+         unsigned h, id;
+-        if (sscanf(line, "%u\t%*s\t%u", &h, &id) == 2 && h < MAX_HANDLES)
++        if (sscanf(line, "%u\t%*s\t%u", &h, &id) == 2 && h < MAX_HANDLES) {
+             g_handle_to_id[h] = (u16)id;
++            if (h + 1 > g_handle_count) g_handle_count = h + 1;
++        }
+     }
+     fclose(f);
+ }
+@@ -154,6 +159,21 @@ extern "C" void _ZN6Memory10DeallocateEPv(void *p) { Memory::Deallocate(p); }
+ extern "C" {
+ u32 data_0209d3bc; /* last fileID touched; the game's FS breadcrumb */
+ 
++/* Catalog enumeration for harnesses that walk every asset (the soak gates):
++   the same handle -> path table whichever backend loaded it (TSV or ROM). */
++unsigned sm64ds_fs_handle_count(void)
++{
++    catalog_load();
++    return g_handle_count;
++}
++const char *sm64ds_fs_handle_path(unsigned handle)
++{
++    catalog_load();
++    if (handle >= g_handle_count) return 0;
++    const char *p = g_paths[g_handle_to_id[handle]];
++    return p[0] ? p : 0;
++}
++
+ /* ov0 handle -> FAT file id (data_ov000_020bd4b8 on the DS) */
+ u16 func_02018a24(u32 handle)
+ {
+diff --git a/port/hal/os_arena.cpp b/port/hal/os_arena.cpp
+index 19b7faa..7e13750 100644
+--- a/port/hal/os_arena.cpp
++++ b/port/hal/os_arena.cpp
+@@ -8,7 +8,12 @@
+ 
+ typedef unsigned int u32;
+ 
+-enum { HOST_ARENA = 8 << 20 };   /* 8 MB: larger than the DS main-RAM arena */
++/* 8 MB: larger than the DS main-RAM arena. Builds without an environment
++   (the PS Vita) set the soak gates' larger arena at compile time. */
++#ifndef SM64DS_HOST_ARENA_MB_DEFAULT
++#define SM64DS_HOST_ARENA_MB_DEFAULT 8
++#endif
++enum { HOST_ARENA = SM64DS_HOST_ARENA_MB_DEFAULT << 20 };
+ 
+ static char *g_lo, *g_hi;
+ static void arena_init(void)
+diff --git a/port/tests/smoke_soak.cpp b/port/tests/smoke_soak.cpp
+index 08b332e..26106d4 100644
+--- a/port/tests/smoke_soak.cpp
++++ b/port/tests/smoke_soak.cpp
+@@ -20,8 +20,10 @@
+ #include "ntr/gx.h"
+ #include "ntr/mmio.h"
+ 
++#if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
++#endif
+ 
+ extern "C" {
+ void _ZN17dExtSimpleModel_cC1Ev(void *self);
+@@ -80,32 +82,59 @@ static int run_one(unsigned handle, size_t *tris_out)
+ 
+ static int run_one_seh(unsigned handle, size_t *tris, unsigned *code)
+ {
++#if defined(_WIN32)
+     __try {
+         return run_one(handle, tris);
+     } __except (1) {
+         *code = GetExceptionCode();
+         return -1;
+     }
++#else
++    /* No recoverable faults here (on the PS Vita a fault ends the process),
++       so the caller logs each model BEFORE running it: the last line of the
++       log names the model that faulted. */
++    (void)code;
++    return run_one(handle, tris);
++#endif
+ }
+ 
++#if defined(SM64DS_FS_ROM)
++/* The catalog comes from the ROM itself (port/hal/fs.cpp's handle table). */
++extern "C" unsigned sm64ds_fs_handle_count(void);
++extern "C" const char *sm64ds_fs_handle_path(unsigned handle);
++#endif
++
+ int main(int argc, char **argv)
+ {
+     if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
+     if (!_ZN5mHeap6Heap_t13SetupRootHeapEv()) { fprintf(stderr, "no heap\n"); return 2; }
+     ident_fx(&data_0209b3ec);
+ 
++    const int limit = argc > 1 ? atoi(argv[1]) : 0;
++    int total = 0, ok = 0, empty = 0, load_fail = 0, faulted = 0;
++    size_t tri_sum = 0;
++#if defined(SM64DS_FS_ROM)
++    const unsigned nhandles = sm64ds_fs_handle_count();
++    if (!nhandles) { fprintf(stderr, "no handle table in the ROM\n"); return 2; }
++    const char *only = getenv("SM64DS_SOAK_MATCH");   /* optional path filter */
++    for (unsigned handle = 0; handle < nhandles; ++handle) {
++        const char *p = sm64ds_fs_handle_path(handle);
++        if (!p) continue;
++        const size_t pl = strlen(p);
++        if (pl < 4 || strcmp(p + pl - 4, ".bmd") != 0)   /* kind "model" */
++            continue;
++        if (only && !strstr(p, only))
++            continue;
++        printf("  [%3d] %s\n", total + 1, p);           /* before: names a fault */
++#else
+     char path[512];
+     snprintf(path, sizeof path, "%s/build/assets/handles.tsv",
+              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
+                                          : PORT_REPO_ROOT);
+     FILE *f = fopen(path, "r");
+     if (!f) { fprintf(stderr, "no catalog at %s\n", path); return 2; }
+-
+-    const int limit = argc > 1 ? atoi(argv[1]) : 0;
+     char line[512];
+     fgets(line, sizeof line, f);
+-    int total = 0, ok = 0, empty = 0, load_fail = 0, faulted = 0;
+-    size_t tri_sum = 0;
+     while (fgets(line, sizeof line, f)) {
+         unsigned handle;
+         char p[300], kind[40];
+@@ -113,6 +142,7 @@ int main(int argc, char **argv)
+             continue;
+         if (strcmp(kind, "model") != 0)
+             continue;
++#endif
+         if (limit && total >= limit)
+             break;
+         ++total;
+@@ -133,7 +163,9 @@ int main(int argc, char **argv)
+             tri_sum += tris;
+         }
+     }
++#if !defined(SM64DS_FS_ROM)
+     fclose(f);
++#endif
+ 
+     printf("soak: %d models, %d rendered (%zu tris total), %d empty, "
+            "%d load-fail, %d faulted\n",
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index 9f78660..869141b 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -318,3 +318,21 @@ sm64ds_vita_gate(gate5 SMDS00007 "SM64DS Gate 5" tests/smoke_frames.cpp
+             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+ target_sources(gate5 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+ target_link_libraries(gate5 PRIVATE ntr)
++
++# Gate 4d: EVERY model in the ROM through the game's pipeline (load, rebase,
++# texture upload, render). No SEH on the Vita: each model is logged before it
++# runs, so a fault leaves its name as the last line of gate4d.log. Model
++# components leak by design in this soak (the PC run needs a 256 MB arena),
++# hence the larger heap.
++sm64ds_vita_gate(gate4d SMDS00008 "SM64DS Gate 4d" tests/smoke_soak.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT="."
++            SM64DS_VITA_HEAP_MB=192 SM64DS_HOST_ARENA_MB_DEFAULT=160
++            SM64DS_TEST_MAIN_ARGS)
++target_sources(gate4d PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate4d PRIVATE ntr)
+diff --git a/port/vita/vita_main.cpp b/port/vita/vita_main.cpp
+index 1d119a7..d85c421 100644
+--- a/port/vita/vita_main.cpp
++++ b/port/vita/vita_main.cpp
+@@ -27,13 +27,22 @@
+ #define SM64DS_LOG_DIR "ux0:data/sm64ds"
+ #endif
+ 
+-int sm64ds_test_main();   // the gate's renamed main(void)
++// The gate's renamed main: main(void) for most, main(argc, argv) where the
++// gate defines SM64DS_TEST_MAIN_ARGS (it is called with no arguments).
++#if defined(SM64DS_TEST_MAIN_ARGS)
++int sm64ds_test_main(int argc, char **argv);
++#else
++int sm64ds_test_main();
++#endif
+ 
+ // VitaSDK's newlib reads this to size the C heap (malloc). From gate 4a on the
+ // gates hold the DS regions (~14 MB) plus the whole ROM image (16 MB) at once,
+ // so the size is set explicitly instead of trusting the default. Ignored by
+ // other C libraries (desktop/QEMU test builds).
+-extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
++#ifndef SM64DS_VITA_HEAP_MB
++#define SM64DS_VITA_HEAP_MB 96
++#endif
++extern "C" { int _newlib_heap_size_user = SM64DS_VITA_HEAP_MB * 1024 * 1024; }
+ extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
+ #if defined(SM64DS_VITA_PREINIT)
+ extern "C" bool sm64ds_vita_preinit(void);   // port/hal/romdata_rom.cpp
+@@ -74,7 +83,13 @@ int main()
+         return 0;
+     }
+ #endif
++#if defined(SM64DS_TEST_MAIN_ARGS)
++    char arg0[] = SM64DS_GATE_NAME;
++    char *argv[] = {arg0, nullptr};
++    const int rc = sm64ds_test_main(1, argv);
++#else
+     const int rc = sm64ds_test_main();
++#endif
+     sm64ds_log_file = nullptr;
+     fprintf(log, "== %s finished: exit code %d (%s) ==\n",
+             SM64DS_GATE_NAME, rc, rc == 0 ? "PASS" : "FAIL");

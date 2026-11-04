@@ -27,13 +27,22 @@
 #define SM64DS_LOG_DIR "ux0:data/sm64ds"
 #endif
 
-int sm64ds_test_main();   // the gate's renamed main(void)
+// The gate's renamed main: main(void) for most, main(argc, argv) where the
+// gate defines SM64DS_TEST_MAIN_ARGS (it is called with no arguments).
+#if defined(SM64DS_TEST_MAIN_ARGS)
+int sm64ds_test_main(int argc, char **argv);
+#else
+int sm64ds_test_main();
+#endif
 
 // VitaSDK's newlib reads this to size the C heap (malloc). From gate 4a on the
 // gates hold the DS regions (~14 MB) plus the whole ROM image (16 MB) at once,
 // so the size is set explicitly instead of trusting the default. Ignored by
 // other C libraries (desktop/QEMU test builds).
-extern "C" { int _newlib_heap_size_user = 96 * 1024 * 1024; }
+#ifndef SM64DS_VITA_HEAP_MB
+#define SM64DS_VITA_HEAP_MB 96
+#endif
+extern "C" { int _newlib_heap_size_user = SM64DS_VITA_HEAP_MB * 1024 * 1024; }
 extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
 #if defined(SM64DS_VITA_PREINIT)
 extern "C" bool sm64ds_vita_preinit(void);   // port/hal/romdata_rom.cpp
@@ -74,7 +83,13 @@ int main()
         return 0;
     }
 #endif
+#if defined(SM64DS_TEST_MAIN_ARGS)
+    char arg0[] = SM64DS_GATE_NAME;
+    char *argv[] = {arg0, nullptr};
+    const int rc = sm64ds_test_main(1, argv);
+#else
     const int rc = sm64ds_test_main();
+#endif
     sm64ds_log_file = nullptr;
     fprintf(log, "== %s finished: exit code %d (%s) ==\n",
             SM64DS_GATE_NAME, rc, rc == 0 ? "PASS" : "FAIL");

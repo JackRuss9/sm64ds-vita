@@ -8,7 +8,12 @@
 
 typedef unsigned int u32;
 
-enum { HOST_ARENA = 8 << 20 };   /* 8 MB: larger than the DS main-RAM arena */
+/* 8 MB: larger than the DS main-RAM arena. Builds without an environment
+   (the PS Vita) set the soak gates' larger arena at compile time. */
+#ifndef SM64DS_HOST_ARENA_MB_DEFAULT
+#define SM64DS_HOST_ARENA_MB_DEFAULT 8
+#endif
+enum { HOST_ARENA = SM64DS_HOST_ARENA_MB_DEFAULT << 20 };
 
 static char *g_lo, *g_hi;
 static void arena_init(void)

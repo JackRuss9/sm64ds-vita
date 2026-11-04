@@ -3,10 +3,29 @@
 #include "ntr/mmio.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
+
+// ---------------------------------------------------------------------------
+// The game "fiber" on hosts without Windows fibers (PS Vita; Linux for tests).
+//
+// The game runs on its own OS thread, and the two threads hand a single turn
+// back and forth: exactly one of them runs at any moment, so this has the same
+// semantics as the Windows fibers -- no races, game control flow untouched.
+//
+// Why a real thread and not a hand-rolled stack switch: on the PS Vita a
+// switch onto a malloc'd stack ran the game for eight frames and was then
+// stopped by the kernel (stop reason 0x10006) with sp outside the thread's
+// registered stack. A thread gives the game a stack the kernel itself created.
+// VitaSDK's pthread (pthread-embedded) creates native SceKernel threads.
+// ---------------------------------------------------------------------------
+#if !defined(_WIN32)
+#define NTR_THREAD_FIBERS 1
+#include <pthread.h>
 #endif
 
 namespace ntr {
@@ -25,8 +44,9 @@ inline volatile uint16_t &reg16(uint32_t a) {
 }
 
 struct Runtime {
-    void *host_fiber = nullptr;
+    void *host_fiber = nullptr;   // Windows: fiber handles
     void *game_fiber = nullptr;
+    bool game_running = false;    // threads: the game thread exists
     void (*entry)() = nullptr;
     FrameHook hook = nullptr;
     uint64_t frame = 0;
@@ -45,6 +65,39 @@ void CALLBACK game_trampoline(void *) {
     // The game returned. Hand control back for good.
     for (;;) SwitchToFiber(g.host_fiber);
 }
+#elif defined(NTR_THREAD_FIBERS)
+// One turn token. `turn` says whose turn it is; each side waits for its own.
+enum Turn { HOST, GAME };
+// Initialised by function, not PTHREAD_*_INITIALIZER: not every embedded
+// pthread provides the static initialisers.
+pthread_mutex_t g_lock;
+pthread_cond_t g_cv;
+bool g_sync_ready = false;
+Turn g_turn = HOST;
+bool g_abandon = false;           // host stopped early: the game thread must exit
+
+void give_turn(Turn to) {         // caller holds g_lock
+    g_turn = to;
+    pthread_cond_broadcast(&g_cv);
+}
+void wait_turn(Turn mine) {       // caller holds g_lock
+    while (g_turn != mine) pthread_cond_wait(&g_cv, &g_lock);
+}
+
+void *game_thread(void *) {
+    pthread_mutex_lock(&g_lock);
+    wait_turn(GAME);
+    pthread_mutex_unlock(&g_lock);
+    if (!g_abandon) g.entry();
+    pthread_mutex_lock(&g_lock);
+    g.game_done = true;
+    give_turn(HOST);
+    pthread_mutex_unlock(&g_lock);
+    return nullptr;
+}
+
+// The game thread's stack: generous, the Windows fiber had 256 KB.
+constexpr size_t GAME_STACK = 1024 * 1024;
 #endif
 
 // Advance the scanline counter across a frame. Anything spinning on VCOUNT --
@@ -60,6 +113,15 @@ void rt_vblank_wait() {
     if (!g.game_fiber) return;   // not running under rt_run; nothing to yield to
     reg32(REG_IF) |= IRQ_VBLANK;
     SwitchToFiber(g.host_fiber);
+#elif defined(NTR_THREAD_FIBERS)
+    if (!g.game_running) return;   // not running under rt_run; nothing to yield to
+    reg32(REG_IF) |= IRQ_VBLANK;
+    pthread_mutex_lock(&g_lock);
+    give_turn(HOST);
+    wait_turn(GAME);
+    const bool abandon = g_abandon;
+    pthread_mutex_unlock(&g_lock);
+    if (abandon) pthread_exit(nullptr);   // host stopped the loop: end this thread
 #endif
 }
 
@@ -86,10 +148,60 @@ uint32_t rt_irq_restore(uint32_t prev) {
 bool rt_irq_masked() { return g.cpsr_i != 0; }
 
 uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
-#if !defined(_WIN32)
-    (void)game; (void)hook; (void)max_frames;
-    std::fprintf(stderr, "rt_run: fiber backend is Windows-only so far\n");
-    return 0;
+#if defined(NTR_THREAD_FIBERS)
+    if (!io_init()) {
+        std::fprintf(stderr, "rt_run: io_init failed\n");
+        return 0;
+    }
+    g = Runtime{};
+    g.entry = game;
+    g.hook = hook;
+    g.max_frames = max_frames;
+    if (!g_sync_ready) {
+        pthread_mutex_init(&g_lock, nullptr);
+        pthread_cond_init(&g_cv, nullptr);
+        g_sync_ready = true;
+    }
+    g_turn = HOST;
+    g_abandon = false;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, GAME_STACK);
+    pthread_t th;
+    const int rc = pthread_create(&th, &attr, game_thread, nullptr);
+    pthread_attr_destroy(&attr);
+    if (rc != 0) {
+        std::fprintf(stderr, "rt_run: cannot create the game thread (%d)\n", rc);
+        return 0;
+    }
+    g.game_running = true;
+
+    reg32(REG_IME) = 1;
+    reg32(REG_IE) = IRQ_VBLANK;
+
+    while (!g.game_done && !g.stop) {
+        pthread_mutex_lock(&g_lock);          // run the game until it blocks
+        give_turn(GAME);
+        wait_turn(HOST);
+        pthread_mutex_unlock(&g_lock);
+        if (g.game_done) break;
+
+        run_scanlines();
+        ++g.frame;
+        if (g.hook && !g.hook(g.frame)) g.stop = true;
+        if (g.max_frames && g.frame >= g.max_frames) g.stop = true;
+        reg32(REG_IF) &= ~IRQ_VBLANK;
+    }
+    if (!g.game_done) {                       // stopped early: release the game
+        pthread_mutex_lock(&g_lock);
+        g_abandon = true;
+        give_turn(GAME);
+        pthread_mutex_unlock(&g_lock);
+    }
+    pthread_join(th, nullptr);
+    g.game_running = false;
+    return g.frame;
 #else
     if (!io_init()) {
         std::fprintf(stderr, "rt_run: io_init failed\n");

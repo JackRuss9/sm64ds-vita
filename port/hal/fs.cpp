@@ -67,6 +67,7 @@ enum { MAX_FILES = 4096, MAX_HANDLES = 4096, PATH_MAX_ = 260 };
 static char g_paths[MAX_FILES][PATH_MAX_]; /* by FAT file id */
 static u16 g_handle_to_id[MAX_HANDLES];    /* ov0 handle -> FAT file id */
 static int g_catalog_loaded;
+static unsigned g_handle_count;            /* handles the catalog defines */
 
 static const char *asset_root(void)
 {
@@ -82,8 +83,10 @@ static void rom_on_file(unsigned id, const char *path, void *)
 }
 static void rom_on_handle(unsigned h, unsigned id, void *)
 {
-    if (h < MAX_HANDLES)
+    if (h < MAX_HANDLES) {
         g_handle_to_id[h] = (u16)id;
+        if (h + 1 > g_handle_count) g_handle_count = h + 1;
+    }
 }
 #endif
 
@@ -133,8 +136,10 @@ static void catalog_load(void)
     fgets(line, sizeof line, f);
     while (fgets(line, sizeof line, f)) {
         unsigned h, id;
-        if (sscanf(line, "%u\t%*s\t%u", &h, &id) == 2 && h < MAX_HANDLES)
+        if (sscanf(line, "%u\t%*s\t%u", &h, &id) == 2 && h < MAX_HANDLES) {
             g_handle_to_id[h] = (u16)id;
+            if (h + 1 > g_handle_count) g_handle_count = h + 1;
+        }
     }
     fclose(f);
 }
@@ -153,6 +158,21 @@ extern "C" void _ZN6Memory10DeallocateEPv(void *p) { Memory::Deallocate(p); }
 
 extern "C" {
 u32 data_0209d3bc; /* last fileID touched; the game's FS breadcrumb */
+
+/* Catalog enumeration for harnesses that walk every asset (the soak gates):
+   the same handle -> path table whichever backend loaded it (TSV or ROM). */
+unsigned sm64ds_fs_handle_count(void)
+{
+    catalog_load();
+    return g_handle_count;
+}
+const char *sm64ds_fs_handle_path(unsigned handle)
+{
+    catalog_load();
+    if (handle >= g_handle_count) return 0;
+    const char *p = g_paths[g_handle_to_id[handle]];
+    return p[0] ? p : 0;
+}
 
 /* ov0 handle -> FAT file id (data_ov000_020bd4b8 on the DS) */
 u16 func_02018a24(u32 handle)

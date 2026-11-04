@@ -216,6 +216,8 @@ add_library(ntr STATIC
     ${PORT_DIR}/ntr/runtime.cpp ${PORT_DIR}/ntr/fs.cpp ${PORT_DIR}/ntr/bmd.cpp)
 target_include_directories(ntr PUBLIC "${PORT_DIR}/ntr/include")
 target_compile_definitions(ntr PUBLIC NTR_RELOCATE_REGIONS)
+# rt.cpp runs the game on its own thread (VitaSDK: pthread-embedded, native threads)
+target_link_libraries(ntr PUBLIC pthread)
 target_compile_options(ntr PRIVATE ${SM64DS_FLAGS})
 set_source_files_properties(
     ${PORT_DIR}/ntr/io.cpp ${PORT_DIR}/ntr/gx.cpp ${PORT_DIR}/ntr/texture.cpp
@@ -300,3 +302,37 @@ sm64ds_vita_gate(gate4b SMDS00006 "SM64DS Gate 4b" tests/smoke_model.cpp
             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
 target_sources(gate4b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
 target_link_libraries(gate4b PRIVATE ntr)
+
+# Gate 5: the game's frame shape on the fiber runtime (ntr/rt.cpp: an ARM
+# context switch stands in for Windows fibers). The Mad Piano plays its attack
+# animation for 24 frames, yielding at VBlank like the real main loop; each
+# frame is written to ux0:data/sm64ds/frames/frame_NN.bmp.
+sm64ds_vita_gate(gate5 SMDS00007 "SM64DS Gate 5" tests/smoke_frames.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
+        hal/romfs.cpp hal/romdata_rom.cpp
+        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
+    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
+    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
+    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
+            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
+            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+target_sources(gate5 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+target_link_libraries(gate5 PRIVATE ntr)
+
+# Gate 4d: EVERY model in the ROM through the game's pipeline (load, rebase,
+# texture upload, render). No SEH on the Vita: each model is logged before it
+# runs, so a fault leaves its name as the last line of gate4d.log. Model
+# components leak by design in this soak (the PC run needs a 256 MB arena),
+# hence the larger heap.
+sm64ds_vita_gate(gate4d SMDS00008 "SM64DS Gate 4d" tests/smoke_soak.cpp
+    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
+        hal/romfs.cpp hal/romdata_rom.cpp
+        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
+    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
+    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
+    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
+            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT="."
+            SM64DS_VITA_HEAP_MB=192 SM64DS_HOST_ARENA_MB_DEFAULT=160
+            SM64DS_TEST_MAIN_ARGS)
+target_sources(gate4d PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+target_link_libraries(gate4d PRIVATE ntr)

@@ -20,8 +20,10 @@
 #include "ntr/gx.h"
 #include "ntr/mmio.h"
 
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 
 extern "C" {
 void _ZN17dExtSimpleModel_cC1Ev(void *self);
@@ -80,13 +82,27 @@ static int run_one(unsigned handle, size_t *tris_out)
 
 static int run_one_seh(unsigned handle, size_t *tris, unsigned *code)
 {
+#if defined(_WIN32)
     __try {
         return run_one(handle, tris);
     } __except (1) {
         *code = GetExceptionCode();
         return -1;
     }
+#else
+    /* No recoverable faults here (on the PS Vita a fault ends the process),
+       so the caller logs each model BEFORE running it: the last line of the
+       log names the model that faulted. */
+    (void)code;
+    return run_one(handle, tris);
+#endif
 }
+
+#if defined(SM64DS_FS_ROM)
+/* The catalog comes from the ROM itself (port/hal/fs.cpp's handle table). */
+extern "C" unsigned sm64ds_fs_handle_count(void);
+extern "C" const char *sm64ds_fs_handle_path(unsigned handle);
+#endif
 
 int main(int argc, char **argv)
 {
@@ -94,18 +110,31 @@ int main(int argc, char **argv)
     if (!_ZN5mHeap6Heap_t13SetupRootHeapEv()) { fprintf(stderr, "no heap\n"); return 2; }
     ident_fx(&data_0209b3ec);
 
+    const int limit = argc > 1 ? atoi(argv[1]) : 0;
+    int total = 0, ok = 0, empty = 0, load_fail = 0, faulted = 0;
+    size_t tri_sum = 0;
+#if defined(SM64DS_FS_ROM)
+    const unsigned nhandles = sm64ds_fs_handle_count();
+    if (!nhandles) { fprintf(stderr, "no handle table in the ROM\n"); return 2; }
+    const char *only = getenv("SM64DS_SOAK_MATCH");   /* optional path filter */
+    for (unsigned handle = 0; handle < nhandles; ++handle) {
+        const char *p = sm64ds_fs_handle_path(handle);
+        if (!p) continue;
+        const size_t pl = strlen(p);
+        if (pl < 4 || strcmp(p + pl - 4, ".bmd") != 0)   /* kind "model" */
+            continue;
+        if (only && !strstr(p, only))
+            continue;
+        printf("  [%3d] %s\n", total + 1, p);           /* before: names a fault */
+#else
     char path[512];
     snprintf(path, sizeof path, "%s/build/assets/handles.tsv",
              getenv("SM64DS_ASSET_ROOT") ? getenv("SM64DS_ASSET_ROOT")
                                          : PORT_REPO_ROOT);
     FILE *f = fopen(path, "r");
     if (!f) { fprintf(stderr, "no catalog at %s\n", path); return 2; }
-
-    const int limit = argc > 1 ? atoi(argv[1]) : 0;
     char line[512];
     fgets(line, sizeof line, f);
-    int total = 0, ok = 0, empty = 0, load_fail = 0, faulted = 0;
-    size_t tri_sum = 0;
     while (fgets(line, sizeof line, f)) {
         unsigned handle;
         char p[300], kind[40];
@@ -113,6 +142,7 @@ int main(int argc, char **argv)
             continue;
         if (strcmp(kind, "model") != 0)
             continue;
+#endif
         if (limit && total >= limit)
             break;
         ++total;
@@ -133,7 +163,9 @@ int main(int argc, char **argv)
             tri_sum += tris;
         }
     }
+#if !defined(SM64DS_FS_ROM)
     fclose(f);
+#endif
 
     printf("soak: %d models, %d rendered (%zu tris total), %d empty, "
            "%d load-fail, %d faulted\n",

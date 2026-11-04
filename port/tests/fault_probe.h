@@ -3,9 +3,11 @@
 #ifndef PORT_FAULT_PROBE_H
 #define PORT_FAULT_PROBE_H
 
+#include <stdio.h>
+
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <stdio.h>
 
 static LONG WINAPI port_fault_probe(EXCEPTION_POINTERS *ep)
 {
@@ -25,5 +27,10 @@ static LONG WINAPI port_fault_probe(EXCEPTION_POINTERS *ep)
 }
 
 #define PORT_INSTALL_FAULT_PROBE() SetUnhandledExceptionFilter(port_fault_probe)
+#else
+/* Other hosts: no structured-exception hook. A fault ends the process; on the
+   PS Vita the gate's log still holds every line printed before it. */
+#define PORT_INSTALL_FAULT_PROBE() ((void)0)
+#endif
 
 #endif

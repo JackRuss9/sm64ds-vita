@@ -1,0 +1,246 @@
+diff --git a/port/ntr/rt.cpp b/port/ntr/rt.cpp
+index 0e72452..fed3114 100644
+--- a/port/ntr/rt.cpp
++++ b/port/ntr/rt.cpp
+@@ -3,12 +3,52 @@
+ #include "ntr/mmio.h"
+ 
+ #include <cstdio>
++#include <cstdlib>
+ 
+ #if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #endif
+ 
++// ---------------------------------------------------------------------------
++// Fibers without an OS (PS Vita, and ARM Linux under QEMU for testing).
++//
++// Windows has CreateFiber/SwitchToFiber. Elsewhere the same two-stack, one-at-
++// a-time model is a handful of ARM instructions: save the registers the AAPCS
++// says a callee must preserve (r4-r11, plus r12 to keep the frame 8-byte
++// aligned, lr as the resume address, and VFP d8-d15), store sp, load the other
++// stack's sp, restore, return into it. Exactly one fiber runs at any time, so
++// nothing races, and no OS threads or semaphores are involved.
++//
++//   ntr_ctx_switch(&save_sp, new_sp)
++//
++// The two VFP instructions are spelled as raw encodings (.inst) on purpose: a
++// `.fpu' directive here would change the assembler's FPU for the REST of the
++// translation unit and reject the NEON code the compiler emits after it.
++//
++// A new stack is primed with the same frame layout, its return address being
++// the fiber's entry function, so the first switch "returns" into it.
++// ---------------------------------------------------------------------------
++#if !defined(_WIN32) && defined(__arm__)
++#define NTR_ARM_FIBERS 1
++extern "C" void ntr_ctx_switch(void **save_sp, void *new_sp);
++__asm__(
++    "   .text\n"
++    "   .syntax unified\n"
++    "   .arm\n"
++    "   .align 2\n"
++    "   .global ntr_ctx_switch\n"
++    "   .type ntr_ctx_switch, %function\n"
++    "ntr_ctx_switch:\n"
++    "   push  {r4-r12, lr}\n"     /* 40 bytes */
++    "   .inst 0xed2d8b10\n"       /* vpush {d8-d15}: 64 bytes, 104 total, 8-aligned */
++    "   str   sp, [r0]\n"
++    "   mov   sp, r1\n"
++    "   .inst 0xecbd8b10\n"       /* vpop {d8-d15} */
++    "   pop   {r4-r12, pc}\n"     /* interworking return (ARMv7) */
++    "   .size ntr_ctx_switch, .-ntr_ctx_switch\n");
++#endif
++
+ namespace ntr {
+ namespace {
+ 
+@@ -25,8 +65,9 @@ inline volatile uint16_t &reg16(uint32_t a) {
+ }
+ 
+ struct Runtime {
+-    void *host_fiber = nullptr;
++    void *host_fiber = nullptr;   // Windows: fiber handles; ARM: saved stack pointers
+     void *game_fiber = nullptr;
++    void *game_stack = nullptr;   // ARM: the game fiber's allocated stack
+     void (*entry)() = nullptr;
+     FrameHook hook = nullptr;
+     uint64_t frame = 0;
+@@ -45,6 +86,25 @@ void CALLBACK game_trampoline(void *) {
+     // The game returned. Hand control back for good.
+     for (;;) SwitchToFiber(g.host_fiber);
+ }
++#elif defined(NTR_ARM_FIBERS)
++void game_trampoline() {
++    g.entry();
++    g.game_done = true;
++    for (;;) ntr_ctx_switch(&g.game_fiber, g.host_fiber);
++}
++
++// Stack size for the game fiber: the Windows build's 256 KB.
++constexpr size_t GAME_STACK = 256 * 1024;
++
++// Prime a fresh stack so ntr_ctx_switch's restore half lands in `entry`:
++// [d8-d15][r4-r12][pc], lowest address first, 8-byte aligned top.
++void *prime_stack(void *stack, size_t size, void (*entry)()) {
++    uintptr_t top = (reinterpret_cast<uintptr_t>(stack) + size) & ~uintptr_t(7);
++    uint32_t *sp = reinterpret_cast<uint32_t *>(top) - 26;   // 16 + 9 + 1 words
++    for (int i = 0; i < 25; ++i) sp[i] = 0;
++    sp[25] = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(entry));
++    return sp;
++}
+ #endif
+ 
+ // Advance the scanline counter across a frame. Anything spinning on VCOUNT --
+@@ -60,6 +120,10 @@ void rt_vblank_wait() {
+     if (!g.game_fiber) return;   // not running under rt_run; nothing to yield to
+     reg32(REG_IF) |= IRQ_VBLANK;
+     SwitchToFiber(g.host_fiber);
++#elif defined(NTR_ARM_FIBERS)
++    if (!g.game_stack) return;   // not running under rt_run; nothing to yield to
++    reg32(REG_IF) |= IRQ_VBLANK;
++    ntr_ctx_switch(&g.game_fiber, g.host_fiber);
+ #endif
+ }
+ 
+@@ -86,9 +150,44 @@ uint32_t rt_irq_restore(uint32_t prev) {
+ bool rt_irq_masked() { return g.cpsr_i != 0; }
+ 
+ uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
+-#if !defined(_WIN32)
++#if defined(NTR_ARM_FIBERS)
++    if (!io_init()) {
++        std::fprintf(stderr, "rt_run: io_init failed\n");
++        return 0;
++    }
++    g = Runtime{};
++    g.entry = game;
++    g.hook = hook;
++    g.max_frames = max_frames;
++    g.game_stack = std::malloc(GAME_STACK);
++    if (!g.game_stack) {
++        std::fprintf(stderr, "rt_run: cannot allocate the game fiber's stack\n");
++        return 0;
++    }
++    g.game_fiber = prime_stack(g.game_stack, GAME_STACK, game_trampoline);
++
++    reg32(REG_IME) = 1;
++    reg32(REG_IE) = IRQ_VBLANK;
++
++    while (!g.game_done && !g.stop) {
++        ntr_ctx_switch(&g.host_fiber, g.game_fiber);   // run until the game blocks
++        if (g.game_done) break;
++
++        run_scanlines();
++        ++g.frame;
++        if (g.hook && !g.hook(g.frame)) g.stop = true;
++        if (g.max_frames && g.frame >= g.max_frames) g.stop = true;
++        reg32(REG_IF) &= ~IRQ_VBLANK;
++    }
++    // A stopped (not finished) game fiber is simply abandoned, as DeleteFiber
++    // does on Windows: its stack goes away with it.
++    std::free(g.game_stack);
++    g.game_stack = nullptr;
++    g.game_fiber = nullptr;
++    return g.frame;
++#elif !defined(_WIN32)
+     (void)game; (void)hook; (void)max_frames;
+-    std::fprintf(stderr, "rt_run: fiber backend is Windows-only so far\n");
++    std::fprintf(stderr, "rt_run: no fiber backend for this host\n");
+     return 0;
+ #else
+     if (!io_init()) {
+diff --git a/port/tests/fault_probe.h b/port/tests/fault_probe.h
+index 80b7924..917fc26 100644
+--- a/port/tests/fault_probe.h
++++ b/port/tests/fault_probe.h
+@@ -3,9 +3,11 @@
+ #ifndef PORT_FAULT_PROBE_H
+ #define PORT_FAULT_PROBE_H
+ 
++#include <stdio.h>
++
++#if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+-#include <stdio.h>
+ 
+ static LONG WINAPI port_fault_probe(EXCEPTION_POINTERS *ep)
+ {
+@@ -25,5 +27,10 @@ static LONG WINAPI port_fault_probe(EXCEPTION_POINTERS *ep)
+ }
+ 
+ #define PORT_INSTALL_FAULT_PROBE() SetUnhandledExceptionFilter(port_fault_probe)
++#else
++/* Other hosts: no structured-exception hook. A fault ends the process; on the
++   PS Vita the gate's log still holds every line printed before it. */
++#define PORT_INSTALL_FAULT_PROBE() ((void)0)
++#endif
+ 
+ #endif
+diff --git a/port/tests/smoke_frames.cpp b/port/tests/smoke_frames.cpp
+index 23b0816..725f8c3 100644
+--- a/port/tests/smoke_frames.cpp
++++ b/port/tests/smoke_frames.cpp
+@@ -21,6 +21,15 @@
+ 
+ #include "fault_probe.h"
+ 
++#if !defined(_WIN32)
++#include <sys/stat.h>
++#endif
++#if defined(SM64DS_OUT_DIR)
++#define FRAMES_DIR SM64DS_OUT_DIR "/frames"
++#else
++#define FRAMES_DIR "frames"
++#endif
++
+ extern "C" {
+ void _ZN17dExtSimpleModel_cC1Ev(void *self);
+ struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
+@@ -92,7 +101,7 @@ static bool frame_hook(uint64_t frame)
+         h = (h ^ bytes[i]) * 16777619u;
+     printf("  hook frame %02u: %zu tris, hash %08x\n", (unsigned)frame, n, h);
+     char name[64];
+-    snprintf(name, sizeof name, "frames/frame_%02u.bmp", (unsigned)frame);
++    snprintf(name, sizeof name, FRAMES_DIR "/frame_%02u.bmp", (unsigned)frame);
+     ntr::ppu_write_bmp(name, fb);
+     return true;
+ }
+@@ -152,7 +161,11 @@ int main(void)
+         memcpy(g_fit, m, sizeof m);
+     }
+ 
+-    CreateDirectoryA("frames", NULL);
++#if defined(_WIN32)
++    CreateDirectoryA(FRAMES_DIR, NULL);
++#else
++    mkdir(FRAMES_DIR, 0777);
++#endif
+     const uint64_t frames = ntr::rt_run(game_main, frame_hook, FRAMES);
+     printf("  frames completed through the fiber loop: %llu\n",
+            (unsigned long long)frames);
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index 3b3b91e..fddcb48 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -300,3 +300,19 @@ sm64ds_vita_gate(gate4b SMDS00006 "SM64DS Gate 4b" tests/smoke_model.cpp
+             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+ target_sources(gate4b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+ target_link_libraries(gate4b PRIVATE ntr)
++
++# Gate 5: the game's frame shape on the fiber runtime (ntr/rt.cpp: an ARM
++# context switch stands in for Windows fibers). The Mad Piano plays its attack
++# animation for 24 frames, yielding at VBlank like the real main loop; each
++# frame is written to ux0:data/sm64ds/frames/frame_NN.bmp.
++sm64ds_vita_gate(gate5 SMDS00007 "SM64DS Gate 5" tests/smoke_frames.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate5 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate5 PRIVATE ntr)

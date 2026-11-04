@@ -21,6 +21,15 @@
 
 #include "fault_probe.h"
 
+#if !defined(_WIN32)
+#include <sys/stat.h>
+#endif
+#if defined(SM64DS_OUT_DIR)
+#define FRAMES_DIR SM64DS_OUT_DIR "/frames"
+#else
+#define FRAMES_DIR "frames"
+#endif
+
 extern "C" {
 void _ZN17dExtSimpleModel_cC1Ev(void *self);
 struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
@@ -92,7 +101,7 @@ static bool frame_hook(uint64_t frame)
         h = (h ^ bytes[i]) * 16777619u;
     printf("  hook frame %02u: %zu tris, hash %08x\n", (unsigned)frame, n, h);
     char name[64];
-    snprintf(name, sizeof name, "frames/frame_%02u.bmp", (unsigned)frame);
+    snprintf(name, sizeof name, FRAMES_DIR "/frame_%02u.bmp", (unsigned)frame);
     ntr::ppu_write_bmp(name, fb);
     return true;
 }
@@ -152,7 +161,11 @@ int main(void)
         memcpy(g_fit, m, sizeof m);
     }
 
-    CreateDirectoryA("frames", NULL);
+#if defined(_WIN32)
+    CreateDirectoryA(FRAMES_DIR, NULL);
+#else
+    mkdir(FRAMES_DIR, 0777);
+#endif
     const uint64_t frames = ntr::rt_run(game_main, frame_hook, FRAMES);
     printf("  frames completed through the fiber loop: %llu\n",
            (unsigned long long)frames);
