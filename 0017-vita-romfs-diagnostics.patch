@@ -1,0 +1,65 @@
+diff --git a/port/hal/romfs.cpp b/port/hal/romfs.cpp
+index c76d7a3..0f6ebde 100644
+--- a/port/hal/romfs.cpp
++++ b/port/hal/romfs.cpp
+@@ -5,6 +5,7 @@
+ // ndspy, the library tools/asset_catalog.py uses. No SDK or emulator code.
+ #include "romfs.h"
+ 
++#include <errno.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -261,14 +262,39 @@ bool open(const char *rom_path,
+ }
+ 
+ uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
++    // Each failure says which step failed: "could not read the ARM9" alone
++    // cannot tell a missing file from a short read or a full heap.
+     FILE *f = fopen(rom_path, "rb");
+-    if (!f) return nullptr;
++    if (!f) {
++        fprintf(stderr, "romfs: fopen(%s) failed, errno %d (%s)\n",
++                rom_path, errno, strerror(errno));
++        return nullptr;
++    }
+     uint8_t hdr[0x30];
+-    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return nullptr; }
++    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) {
++        fprintf(stderr, "romfs: header read failed (file shorter than 0x30?)\n");
++        fclose(f); return nullptr;
++    }
+     // GBATEK header: 0x20 ARM9 ROM offset, 0x28 RAM address, 0x2C size.
+     const uint32_t off = rd32(hdr + 0x20), ram = rd32(hdr + 0x28), size = rd32(hdr + 0x2C);
+-    uint8_t *raw = (size >= 8 && size < (64u << 20)) ? (uint8_t *)malloc(size) : nullptr;
+-    if (!raw || fseek(f, (long)off, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
++    if (size < 8 || size >= (64u << 20)) {
++        fprintf(stderr, "romfs: implausible ARM9 size 0x%x in the header\n", (unsigned)size);
++        fclose(f); return nullptr;
++    }
++    uint8_t *raw = (uint8_t *)malloc(size);
++    if (!raw) {
++        fprintf(stderr, "romfs: malloc(0x%x) for the ARM9 failed\n", (unsigned)size);
++        fclose(f); return nullptr;
++    }
++    if (fseek(f, (long)off, SEEK_SET) != 0) {
++        fprintf(stderr, "romfs: fseek to ARM9 offset 0x%x failed, errno %d\n",
++                (unsigned)off, errno);
++        free(raw); fclose(f); return nullptr;
++    }
++    const size_t got = fread(raw, 1, size, f);
++    if (got != size) {
++        fprintf(stderr, "romfs: ARM9 read got 0x%x of 0x%x bytes at 0x%x, errno %d\n",
++                (unsigned)got, (unsigned)size, (unsigned)off, errno);
+         free(raw); fclose(f); return nullptr;
+     }
+     fclose(f);
+@@ -291,6 +317,8 @@ uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
+         *len = size;
+     }
+     if (out) *ram_base = ram;
++    else fprintf(stderr, "romfs: ARM9 BLZ decompression failed (stream 0x%x)\n",
++                 (unsigned)stream);
+     return out;
+ }
+ 

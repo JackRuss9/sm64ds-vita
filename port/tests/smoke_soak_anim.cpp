@@ -107,6 +107,21 @@ static int run_pair(unsigned mh, unsigned ah, size_t *tris, int *frames_out)
     if (model->dExtSimpleModel_c::DoSetFile((char *)file, 0, -1) != 1) return 2;
     ident_fx(&model->mat4x3);
 
+    /* every frame: a bone's sampled scale (the Elem's +0xc..+0x14, fx12)
+       far beyond the frames around it is the one-frame "giant" pose */
+    if (getenv("SOAK_SCALES")) {
+        const char *elems = *(char **)((char *)&model->data + 8);
+        for (int fr = 0; fr < num_frames; ++fr) {
+            _ZN15ModelComponents11UpdateBonesEP8BCA_Filei(&model->data, bca, fr);
+            for (unsigned b = 0; b < model_bones; ++b) {
+                const int *sc = (const int *)(elems + b * 0x34 + 0xc);
+                for (int k = 0; k < 3; ++k)
+                    if (sc[k] > 0x3000 || sc[k] < -0x3000)
+                        printf("  SCALE frame %d/%d bone %u axis %d = %d (%.2f)\n", fr, num_frames, b, k,
+                               sc[k], sc[k] / 4096.0);
+            }
+        }
+    }
     int probes[3] = { 0, num_frames / 2, num_frames - 1 };
     for (int k = 0; k < 3; ++k) {
         _ZN15ModelComponents11UpdateBonesEP8BCA_Filei(&model->data, bca, probes[k]);

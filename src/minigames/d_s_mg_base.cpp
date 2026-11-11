@@ -1594,6 +1594,11 @@ int dScMgBase_c::CloseMenu()
     mTouchOptions.Close();
     int r = GetDisplayMode();
     if (r != 0) Enable3dEngines();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 namespace s20af094 {
@@ -1694,6 +1699,11 @@ int dScMgBase_c::SaveScreenForMenu() {
         DecompressLZ16(sMgMenuScreenByLanguage[idx], vram);
         CP15::FlushAndInvalidateDataCache((u32)save->subObjChars, 0x2000);
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 namespace s20af27c {
@@ -3761,6 +3771,11 @@ int dScMgBase_c::InitSubScreenBg() {
     f = GetGameLanguage();
     LoadCompressedFileAt(sMgOptionNcgByLanguage[f], (void *)G2S::GetBG1CharPtr());
     LoadCompressedFileAt(0x5b, G2S::GetBG1ScrPtr());
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol Mg_ResetBgOffsets

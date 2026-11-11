@@ -10,8 +10,11 @@
 #include "ntr/texture.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 namespace ntr {
@@ -66,7 +69,10 @@ struct State {
     int proj_sp = 0, pos_sp = 0;
 
     uint32_t color = 0xFFFFFFFFu;
-    float u = 0, v = 0;                 // current TEXCOORD, in texels
+    float u = 0, v = 0;                 // current texture coordinates, in texels (after the transform)
+    float s0 = 0, t0 = 0;               // the last TEXCOORD as sent, in texels
+    int texmode = 0;                    // TEXIMAGE_PARAM bits 30-31: how coordinates are made
+    uint8_t tex_wrap = 3;               // TEXIMAGE_PARAM bits 16-19 of the bound texture
     const uint32_t *tex_rgba = nullptr; // bound texture (Mat tex above is the
     int tw = 0, th = 0;                 // texture *matrix* -- different thing)
     int prim = -1;                 // BEGIN_VTXS type, -1 when not inside a primitive
@@ -81,8 +87,17 @@ struct State {
     float emission[3] = {0, 0, 0};
     struct Light { float dx, dy, dz; float r, g, b; } lights[4] = {};
     uint32_t light_mask = 0;
+    // POLYGON_ATTR: latched by 0x29, takes effect at the next BEGIN_VTXS.
+    uint32_t attr_pending = 0x001F0080u, attr = 0x001F0080u;
+    bool attr_seen = false;     // harnesses that never send one keep their lights
 
     std::vector<GxTriangle> tris;
+    // The DS double-buffers its 3D: polygons sent during a frame show only
+    // after SWAP_BUFFERS (0x50). `shown` is the last swapped frame; until the
+    // first swap (the smoke harnesses draw one scene and never swap) the
+    // frame in progress is what renders.
+    std::vector<GxTriangle> shown;
+    bool swapped = false;
 };
 
 State g;
@@ -96,29 +111,97 @@ uint32_t bgr555_to_argb(uint16_t c) {
 
 Mat &current_pos() { return g.pos; }
 
+// Clip space -> screen: x/y in pixels, z in [0,1].
+void to_screen(GxVertex &v) {
+    const float iw = (std::fabs(v.w) > 1e-6f) ? 1.0f / v.w : 0.0f;
+    // DS screen y runs bottom-up; the framebuffer is top-down.
+    v.x = (v.cx * iw + 1.0f) * 0.5f * g.vp_w + g.vp_x;
+    v.y = (1.0f - (v.cy * iw + 1.0f) * 0.5f) * g.vp_h + g.vp_y;
+    v.z = (v.cz * iw + 1.0f) * 0.5f;
+}
+
 // Project a model-space vertex all the way to screen space.
 GxVertex project(int16_t x, int16_t y, int16_t z) {
     const Vec4 v{x * FX12, y * FX12, z * FX12, 1.0f};
     const Vec4 c = mul(mul(v, current_pos()), g.proj);
 
     GxVertex out{};
+    out.cx = c.x; out.cy = c.y; out.cz = c.z;
     out.w = c.w;
-    const float iw = (std::fabs(c.w) > 1e-6f) ? 1.0f / c.w : 0.0f;
-    // DS screen y runs bottom-up; the framebuffer is top-down.
-    out.x = (c.x * iw + 1.0f) * 0.5f * g.vp_w + g.vp_x;
-    out.y = (1.0f - (c.y * iw + 1.0f) * 0.5f) * g.vp_h + g.vp_y;
-    out.z = (c.z * iw + 1.0f) * 0.5f;
+    to_screen(out);
+    if (g.texmode == 3) {
+        // vertex source (GBATEK "Texture Coordinates Transformation"): the
+        // model-space vertex through the texture matrix, added to TEXCOORD
+        const Mat &t = g.tex;
+        const float vx = x * FX12, vy = y * FX12, vz = z * FX12;
+        g.u = (vx * t.m[0] + vy * t.m[4] + vz * t.m[8]) / 16.0f + g.s0;
+        g.v = (vx * t.m[1] + vy * t.m[5] + vz * t.m[9]) / 16.0f + g.t0;
+    }
     out.u = g.u;
     out.v = g.v;
     out.color = g.color;
     return out;
 }
 
+void emit_clipped(const GxVertex &a, const GxVertex &b, const GxVertex &c);
+
+// A point on the edge a-b in clip space, everything interpolated.
+GxVertex clip_lerp(const GxVertex &a, const GxVertex &b, float t) {
+    GxVertex o{};
+    o.cx = a.cx + (b.cx - a.cx) * t; o.cy = a.cy + (b.cy - a.cy) * t;
+    o.cz = a.cz + (b.cz - a.cz) * t; o.w = a.w + (b.w - a.w) * t;
+    o.u = a.u + (b.u - a.u) * t; o.v = a.v + (b.v - a.v) * t;
+    uint32_t col = 0;
+    for (int sh = 0; sh < 32; sh += 8) {
+        const float ca = (a.color >> sh) & 0xFF, cb = (b.color >> sh) & 0xFF;
+        col |= static_cast<uint32_t>(ca + (cb - ca) * t + 0.5f) << sh;
+    }
+    o.color = col;
+    to_screen(o);
+    return o;
+}
+
+// The DS clips every polygon to the view volume before it is drawn. What
+// matters to a rasteriser is the near and far planes (-w <= z <= w): a
+// triangle that reaches behind the camera has no meaningful screen
+// position there -- the perspective divide flips it -- and drew as a huge
+// stray wedge across the picture (the castle's walls in the intro
+// cutscene). The side planes need no clipping: pixels off the screen are
+// simply not drawn.
 void emit_tri(const GxVertex &a, const GxVertex &b, const GxVertex &c) {
+    auto inside = [](const GxVertex &v) { return v.w > 1e-5f && v.cz >= -v.w && v.cz <= v.w; };
+    if (inside(a) && inside(b) && inside(c)) { emit_clipped(a, b, c); return; }
+    GxVertex poly[8], tmp[8];
+    int n = 3;
+    poly[0] = a; poly[1] = b; poly[2] = c;
+    for (int plane = 0; plane < 2 && n >= 3; ++plane) {
+        // distance to the plane, positive inside: near z + w, far w - z
+        auto dist = [plane](const GxVertex &v) { return plane == 0 ? v.cz + v.w : v.w - v.cz; };
+        int m = 0;
+        for (int i = 0; i < n; ++i) {
+            const GxVertex &p = poly[i], &q = poly[(i + 1) % n];
+            const float dp = dist(p), dq = dist(q);
+            if (dp >= 0) tmp[m++] = p;
+            if ((dp >= 0) != (dq >= 0)) tmp[m++] = clip_lerp(p, q, dp / (dp - dq));
+        }
+        n = m;
+        for (int i = 0; i < n; ++i) poly[i] = tmp[i];
+    }
+    for (int i = 1; i + 1 < n; ++i)
+        if (poly[0].w > 1e-5f && poly[i].w > 1e-5f && poly[i + 1].w > 1e-5f)
+            emit_clipped(poly[0], poly[i], poly[i + 1]);
+}
+
+void emit_clipped(const GxVertex &a, const GxVertex &b, const GxVertex &c) {
     GxTriangle t;
     t.v[0] = a; t.v[1] = b; t.v[2] = c;
-    t.tex = g.tex_rgba; t.tw = g.tw; t.th = g.th;
-    g.tris.push_back(t);
+    t.tex = g.tex_rgba; t.tw = g.tw; t.th = g.th; t.wrap = g.tex_wrap;
+    t.faces = static_cast<uint8_t>((g.attr >> 6) & 3);
+    t.alpha = static_cast<uint8_t>((g.attr >> 16) & 31);
+    t.attr = g.attr;
+    // The DS's polygon RAM holds 2048 per frame; anything past twice that is a
+    // frame that never swapped, not a scene.
+    if (g.tris.size() < 4096) g.tris.push_back(t);
 }
 
 // Assemble according to the active BEGIN_VTXS primitive type.
@@ -181,7 +264,47 @@ Mat mat_3x3(const uint32_t *p) {
     return m;
 }
 
+struct GxStats { uint32_t cmds, swaps, vtx, last_shown, proj_loads; } g_stats;
+void drop_old_retired();     // the texture cache, below
+
+// Command recorder (gx_record_start): every executed command as
+// [cmd | np << 8] then np parameter words, for an offline replay.
+std::vector<uint32_t> g_rec;
+size_t g_rec_cap;
+bool g_recording;
+
+// The rolling recorder (gx_ring_enable): the same words, always, into one
+// fixed circular buffer, with where each frame (each SWAP_BUFFERS) starts --
+// so a capture can hand over the last second or two that went by, not only
+// the frames after the tap.
+uint32_t *g_ring;
+uint64_t g_ring_n, g_ring_pos;                 // size, words ever written
+uint64_t g_ring_starts[512];                   // frame starts (positions)
+uint32_t g_ring_frames;                        // frames started
+size_t g_ring_at;                              // g_ring_pos % g_ring_n, kept
+inline void ring_put(uint32_t w) {
+    g_ring[g_ring_at] = w;
+    if (++g_ring_at == g_ring_n) g_ring_at = 0;
+    ++g_ring_pos;
+}
+
 void exec(uint8_t cmd, const uint32_t *p, int np) {
+    ++g_stats.cmds;
+    if (g_ring) {
+        ring_put(cmd | (uint32_t)np << 8);
+        for (int i = 0; i < np; ++i) ring_put(p[i]);
+        if (cmd == 0x50) g_ring_starts[g_ring_frames++ % 512] = g_ring_pos;
+    }
+    if (g_recording) {
+        if (g_rec.size() + 1 + (size_t)np > g_rec_cap) {
+            g_recording = false;
+        } else {
+            g_rec.push_back(cmd | (uint32_t)np << 8);
+            for (int i = 0; i < np; ++i) g_rec.push_back(p[i]);
+        }
+    }
+    if (cmd >= 0x23 && cmd <= 0x28) ++g_stats.vtx;
+    if (cmd >= 0x16 && cmd <= 0x19 && g.mode == 0) ++g_stats.proj_loads;
     (void)np;
     switch (cmd) {
         case 0x00: break;                                        // NOP
@@ -260,6 +383,14 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
             float nx = n10(p[0] & 0x3FF);
             float ny = n10((p[0] >> 10) & 0x3FF);
             float nz = n10((p[0] >> 20) & 0x3FF);
+            if (g.texmode == 2) {
+                // normal source -- sphere/environment maps (Peach's crown):
+                // the model-space normal through the texture matrix, added
+                // to the last TEXCOORD
+                const Mat &t = g.tex;
+                g.u = (nx * t.m[0] + ny * t.m[4] + nz * t.m[8]) / 16.0f + g.s0;
+                g.v = (nx * t.m[1] + ny * t.m[5] + nz * t.m[9]) / 16.0f + g.t0;
+            }
 
             // Normals are transformed by the directional matrix, not position.
             const Mat &v = g.vec;
@@ -290,8 +421,17 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
             break;
         }
         case 0x22:                                               // TEXCOORD (1.4 fx)
-            g.u = static_cast<int16_t>(p[0] & 0xFFFF) / 16.0f;
-            g.v = static_cast<int16_t>(p[0] >> 16) / 16.0f;
+            g.s0 = static_cast<int16_t>(p[0] & 0xFFFF) / 16.0f;
+            g.t0 = static_cast<int16_t>(p[0] >> 16) / 16.0f;
+            if (g.texmode == 1) {
+                // TexCoord source: (S, T, 1/16, 1/16) through the texture matrix
+                const Mat &t = g.tex;
+                g.u = g.s0 * t.m[0] + g.t0 * t.m[4] + (t.m[8] + t.m[12]) / 16.0f;
+                g.v = g.s0 * t.m[1] + g.t0 * t.m[5] + (t.m[9] + t.m[13]) / 16.0f;
+            } else {
+                g.u = g.s0;
+                g.v = g.t0;
+            }
             break;
         case 0x23:                                               // VTX_16
             vertex(static_cast<int16_t>(p[0] & 0xFFFF), static_cast<int16_t>(p[0] >> 16),
@@ -312,7 +452,7 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
                    static_cast<int16_t>(g.vz + d10((p[0] >> 20) & 0x3FF)));
             break;
         }
-        case 0x29: break;                                        // POLYGON_ATTR
+        case 0x29: g.attr_pending = p[0]; g.attr_seen = true; break;   // POLYGON_ATTR
         case 0x2A: gx_teximage_param(p[0]); break;               // TEXIMAGE_PARAM
         case 0x2B: gx_pltt_base(p[0]); break;                    // PLTT_BASE
         case 0x30: {                                             // DIF_AMB
@@ -343,9 +483,14 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
             auto n10 = [](uint32_t v) {
                 return (static_cast<int32_t>(v << 22) >> 22) / 512.0f;
             };
-            g.lights[i].dx = n10(p[0] & 0x3FF);
-            g.lights[i].dy = n10((p[0] >> 10) & 0x3FF);
-            g.lights[i].dz = n10((p[0] >> 20) & 0x3FF);
+            // The DS turns the light vector by the directional matrix
+            // when it is set (GBATEK: "light vector * directional matrix").
+            const float lx = n10(p[0] & 0x3FF), ly = n10((p[0] >> 10) & 0x3FF),
+                        lz = n10((p[0] >> 20) & 0x3FF);
+            const Mat &v = g.vec;
+            g.lights[i].dx = lx * v.m[0] + ly * v.m[4] + lz * v.m[8];
+            g.lights[i].dy = lx * v.m[1] + ly * v.m[5] + lz * v.m[9];
+            g.lights[i].dz = lx * v.m[2] + ly * v.m[6] + lz * v.m[10];
             break;
         }
         case 0x33: {                                             // LIGHT_COLOR
@@ -358,11 +503,22 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
         case 0x34: break;                                        // SHININESS
         case 0x40:                                               // BEGIN_VTXS
             g.prim = p[0] & 3;
+            if (g.attr_seen) {
+                g.attr = g.attr_pending;
+                g.light_mask = g.attr & 0xF;
+            }
             g.strip.clear();
             g.strip_parity = 0;
             break;
         case 0x41: g.prim = -1; g.strip.clear(); break;          // END_VTXS
-        case 0x50: break;                                        // SWAP_BUFFERS
+        case 0x50:                                               // SWAP_BUFFERS
+            ++g_stats.swaps;
+            drop_old_retired();
+            g_stats.last_shown = static_cast<uint32_t>(g.tris.size());
+            g.shown.swap(g.tris);
+            g.tris.clear();
+            g.swapped = true;
+            break;
         case 0x60:                                               // VIEWPORT
             g.vp_x = p[0] & 0xFF;
             g.vp_y = (p[0] >> 8) & 0xFF;
@@ -456,6 +612,7 @@ void gx_set_light(int index, float dx, float dy, float dz, uint32_t bgr555) {
 void gx_enable_lights(uint32_t mask) { g.light_mask = mask & 0xF; }
 
 void gx_bind_texture(const uint32_t *rgba, int width, int height) {
+    g.tex_wrap = 3;     // harness textures repeat; the VRAM path sets its own below
     g.tex_rgba = rgba;
     g.tw = width;
     g.th = height;
@@ -474,7 +631,26 @@ constexpr uintptr_t TEX_SLOT_BASE  = 0x06800000u;   // texture slots, mapped
 constexpr uintptr_t PLTT_SLOT_BASE = 0x06880000u;   // palette slots, mapped
 
 uint32_t g_teximage, g_plttbase;
-std::map<uint64_t, std::vector<uint32_t>> g_vram_tex_cache;
+// Decoded textures are shared: the cache holds one reference, and a frame
+// handed to another thread to draw (gx_capture_frame) holds its own, so a
+// cache clear -- every VRAMCNT store -- cannot free texels a triangle still
+// points at. Cleared entries wait in g_retired until a few swaps have passed
+// (the triangle lists of those frames point at them too).
+using TexData = std::shared_ptr<const std::vector<uint32_t>>;
+std::map<uint64_t, TexData> g_vram_tex_cache;
+std::vector<std::pair<uint32_t, TexData>> g_retired;     // (swap count when retired, texels)
+size_t g_tex_cache_bytes;                                 // decoded texels the cache holds
+void retire_all() {
+    for (auto &e : g_vram_tex_cache) g_retired.emplace_back(g_stats.swaps, e.second);
+    g_vram_tex_cache.clear();
+    g_tex_cache_bytes = 0;
+}
+void drop_old_retired() {
+    size_t k = 0;
+    for (auto &e : g_retired)
+        if (g_stats.swaps - e.first < 4) g_retired[k++] = std::move(e);
+    g_retired.resize(k);
+}
 
 void bind_from_vram() {
     const uint32_t fmt = (g_teximage >> 26) & 7;
@@ -488,28 +664,75 @@ void bind_from_vram() {
         d.height = 8 << ((g_teximage >> 23) & 7);
         d.format = static_cast<int>(fmt);
         d.color0_transparent = (g_teximage >> 29) & 1;
-        d.data = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + off);
-        d.data_len = 0x80000 - static_cast<int32_t>(off);
+        // The bank VRAMCNT gives that texture slot (port/ntr/vram.cpp); the
+        // flat slot window when none is mapped (the smoke harnesses).
+        uint32_t avail = 0;
+        if (const uint32_t a = vram_tex_addr(off, &avail)) {
+            d.data = host_ptr_t<const uint8_t>(a);
+            d.data_len = static_cast<int32_t>(avail);
+        } else if (vram_3d_banks(false)) {
+            // a slot no bank holds: the DS reads nothing there -- no texture
+            d.data = nullptr;
+            d.data_len = 0;
+        } else {
+            d.data = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + off);
+            d.data_len = off < 0x80000 ? 0x80000 - static_cast<int32_t>(off) : 0;
+        }
         // Format 5 keeps its 4x4 palette-index words in slot 1, at half the
         // block offset (GBATEK); the game uploads them right after the blocks.
         if (fmt == 5) {
-            d.index = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + 0x20000 + off / 2);
-            d.index_len = 0x20000 - static_cast<int32_t>(off / 2);
+            uint32_t ia = 0, iav = 0;
+            if ((ia = vram_tex_addr(0x20000 + off / 2, &iav))) {
+                d.index = host_ptr_t<const uint8_t>(ia);
+                d.index_len = static_cast<int32_t>(iav);
+            } else if (vram_3d_banks(false)) {
+                d.index = nullptr;
+                d.index_len = 0;
+            } else {
+                d.index = host_ptr_t<const uint8_t>(TEX_SLOT_BASE + 0x20000 + off / 2);
+                d.index_len = off / 2 < 0x20000 ? 0x20000 - static_cast<int32_t>(off / 2) : 0;
+            }
         }
         const uint32_t pal_off = g_plttbase * (fmt == 2 ? 8u : 16u);
-        d.pal = host_ptr_t<const uint8_t>(PLTT_SLOT_BASE + pal_off);
-        d.pal_len = 0x18000 - static_cast<int32_t>(pal_off);
+        uint32_t pav = 0;
+        if (const uint32_t pa = vram_pltt_addr(pal_off, &pav)) {
+            d.pal = host_ptr_t<const uint8_t>(pa);
+            d.pal_len = static_cast<int32_t>(pav);
+        } else if (vram_3d_banks(true)) {
+            // a palette slot no bank holds: every colour reads as 0
+            d.pal = nullptr;
+            d.pal_len = 0;
+        } else {
+            d.pal = host_ptr_t<const uint8_t>(PLTT_SLOT_BASE + pal_off);
+            d.pal_len = pal_off < 0x18000 ? 0x18000 - static_cast<int32_t>(pal_off) : 0;
+        }
         std::vector<uint32_t> rgba;
         if (!texture_decode(d, rgba)) { gx_bind_texture(nullptr, 0, 0); return; }
-        it = g_vram_tex_cache.emplace(key, std::move(rgba)).first;
+        // The cache only empties at a VRAMCNT store; a scene that walks
+        // through many palette or texture offsets meanwhile (an explosion's
+        // particles) would grow it without end. Past a bound, start again:
+        // the triangles already built keep theirs through g_retired.
+        g_tex_cache_bytes += rgba.size() * 4;
+        if (g_vram_tex_cache.size() >= 768 || g_tex_cache_bytes > (24u << 20)) {
+            retire_all();
+            g_tex_cache_bytes = rgba.size() * 4;
+        }
+        it = g_vram_tex_cache.emplace(key, std::make_shared<const std::vector<uint32_t>>(std::move(rgba))).first;
     }
     const int w = 8 << ((g_teximage >> 20) & 7), h = 8 << ((g_teximage >> 23) & 7);
-    gx_bind_texture(it->second.data(), w, h);
+    gx_bind_texture(it->second->data(), w, h);
+    g.tex_wrap = static_cast<uint8_t>((g_teximage >> 16) & 0xF);
 }
 
 }  // namespace
 
-void gx_teximage_param(uint32_t v) { g_teximage = v; bind_from_vram(); }
+void gx_teximage_param(uint32_t v) {
+    g_teximage = v;
+    g.texmode = static_cast<int>(v >> 30);
+    bind_from_vram();
+}
+// The decoded-texture cache is keyed by slot offsets: a bank remap makes it stale.
+void gx_texture_cache_clear() { retire_all(); }
 void gx_pltt_base(uint32_t v) { g_plttbase = v; bind_from_vram(); }
 
 // Diagnostic: a running hash of every word entering the engine, so a smoke
@@ -559,6 +782,7 @@ void gx_reset() {
     // VRAM-decoded texture cache: uploads can be replaced between scenes
     // (the soak reuses slot offsets per model), so stale entries must go.
     g_vram_tex_cache.clear();
+    g_tex_cache_bytes = 0;
     g_teximage = g_plttbase = 0;
     // The stack slots must start as identity, not zero. dExtSimpleModel_c display lists open
     // with MTX_RESTORE against a slot the *scene* filled in earlier; rendering a
@@ -574,27 +798,49 @@ void gx_reset() {
 }
 
 const GxTriangle *gx_polygons(size_t &count) {
-    count = g.tris.size();
-    return g.tris.empty() ? nullptr : g.tris.data();
+    const std::vector<GxTriangle> &v = g.swapped ? g.shown : g.tris;
+    count = v.size();
+    return v.empty() ? nullptr : v.data();
 }
 
-void gx_render(Framebuffer &fb) {
+bool g_gx_debug_nodepth;     // tools: draw in submission order, no depth test
+
+namespace {
+// `layer`: the picture as the 2D engine receives it (gx_render_layer) --
+// cleared to CLEAR_COLOR with its alpha, each pixel's alpha (0..31) in the top
+// byte, translucent polygons over the clear colour keeping their own alpha,
+// shadow polygons left out (they only mask), the alpha test applied.
+// Otherwise the older debug picture gx_render has always drawn.
+std::mutex g_render_lock;       // the depth buffer is static: one render at a time
+
+void render_impl(Framebuffer &fb, bool layer, const std::vector<GxTriangle> &tris, uint16_t disp3d,
+                 unsigned alpha_ref_reg, uint32_t clear) {
+    std::lock_guard<std::mutex> hold(g_render_lock);
     static float depth[SCREEN_H][SCREEN_W];
     for (int y = 0; y < SCREEN_H; ++y)
         for (int x = 0; x < SCREEN_W; ++x) depth[y][x] = 1e30f;
+    const unsigned alpha_ref = (disp3d & 4) ? alpha_ref_reg & 31 : 0;
+    if (layer) {
+        const uint32_t r = clear & 31, gg = (clear >> 5) & 31, b = (clear >> 10) & 31;
+        const uint32_t px = ((clear >> 16) & 31) << 24 | (r << 3 | r >> 2) << 16 |
+                            (gg << 3 | gg >> 2) << 8 | (b << 3 | b >> 2);
+        for (int y = 0; y < SCREEN_H; ++y)
+            for (int x = 0; x < SCREEN_W; ++x) fb.px[y][x] = px;
+    }
 
-    for (const GxTriangle &t : g.tris) {
+    for (const GxTriangle &t : tris) {
         const GxVertex &a = t.v[0], &b = t.v[1], &c = t.v[2];
         const float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
         if (std::fabs(area) < 1e-6f) continue;
 
-        // Back-face culling. Without it the far side of a closed mesh can win the
-        // depth test and draw *through* the near side -- which shows up as
-        // mirrored texturing, because you are looking at the inside of the far
-        // face. The ? block's question mark read backwards until this existed.
-        // Screen Y is flipped relative to DS space, so a front face is clockwise
-        // here. POLYGON_ATTR selects the mode per polygon; this is the default.
-        if (area > 0.0f) continue;
+        // Face culling per POLYGON_ATTR (bit 0 back faces, bit 1 front). Screen Y
+        // is flipped relative to DS space, so a front face is clockwise here
+        // (area < 0). Without culling the far side of a closed mesh can win the
+        // depth test and draw through the near side (the ? block's question
+        // mark read backwards until this existed).
+        if (area > 0.0f ? !(t.faces & 1) : !(t.faces & 2)) continue;
+        if (t.alpha == 0) continue;                   // wireframe: not drawn yet
+        if (layer && ((t.attr >> 4) & 3) == 3) continue;  // shadow polygon: a mask, not drawn
 
         int minx = static_cast<int>(std::floor(std::fmin(a.x, std::fmin(b.x, c.x))));
         int maxx = static_cast<int>(std::ceil(std::fmax(a.x, std::fmax(b.x, c.x))));
@@ -605,18 +851,34 @@ void gx_render(Framebuffer &fb) {
         if (maxx > SCREEN_W - 1) maxx = SCREEN_W - 1;
         if (maxy > SCREEN_H - 1) maxy = SCREEN_H - 1;
 
+        // The three edge functions, linear in the pixel centre (px, py) and
+        // already divided by the area: one multiply-free step per pixel
+        // instead of three divisions.
+        // Perspective-correct texture coordinates: u/w, v/w and 1/w are what
+        // is linear across the screen. (A flat projection has every w equal
+        // and this reduces to the plain interpolation.)
+        const float ia = a.w > 1e-6f ? 1.0f / a.w : 1.0f, ib = b.w > 1e-6f ? 1.0f / b.w : 1.0f,
+                    ic = c.w > 1e-6f ? 1.0f / c.w : 1.0f;
+        const float inv = 1.0f / area;
+        const float e0x = -(b.y - a.y) * inv, e0y = (b.x - a.x) * inv;
+        const float e0c = ((b.y - a.y) * a.x - (b.x - a.x) * a.y) * inv;
+        const float e1x = -(c.y - b.y) * inv, e1y = (c.x - b.x) * inv;
+        const float e1c = ((c.y - b.y) * b.x - (c.x - b.x) * b.y) * inv;
+        const float e2x = -(a.y - c.y) * inv, e2y = (a.x - c.x) * inv;
+        const float e2c = ((a.y - c.y) * c.x - (a.x - c.x) * c.y) * inv;
         for (int y = miny; y <= maxy; ++y) {
-            for (int x = minx; x <= maxx; ++x) {
-                const float px = x + 0.5f, py = y + 0.5f;
-                float w0 = ((b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x)) / area;
-                float w1 = ((c.x - b.x) * (py - b.y) - (c.y - b.y) * (px - b.x)) / area;
-                float w2 = ((a.x - c.x) * (py - c.y) - (a.y - c.y) * (px - c.x)) / area;
+            const float py = y + 0.5f, px0 = minx + 0.5f;
+            float w0 = e0x * px0 + e0y * py + e0c;
+            float w1 = e1x * px0 + e1y * py + e1c;
+            float w2 = e2x * px0 + e2y * py + e2c;
+            for (int x = minx; x <= maxx; ++x, w0 += e0x, w1 += e1x, w2 += e2x) {
                 // Accept either winding; back-face culling is a POLYGON_ATTR job.
-                if (!((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)))
-                    continue;
+                // (area > 0 or < 0 flips the signs of all three together, and
+                // dividing by it already made inside >= 0.)
+                if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                 const float l0 = w1, l1 = w2, l2 = w0;   // barycentric for a, b, c
                 const float z = l0 * a.z + l1 * b.z + l2 * c.z;
-                if (z >= depth[y][x]) continue;
+                if (!g_gx_debug_nodepth && z >= depth[y][x]) continue;
                 // Depth is written only after the texel passes the alpha test
                 // below -- a transparent texel must not occlude what is behind it.
                 // Texture first; the vertex colour modulates it. UVs are
@@ -625,12 +887,23 @@ void gx_render(Framebuffer &fb) {
                 // a real perspective matrix.
                 uint32_t texel = 0xFFFFFFFFu;
                 if (t.tex && t.tw > 0 && t.th > 0) {
-                    const float uu = l0 * a.u + l1 * b.u + l2 * c.u;
-                    const float vv = l0 * a.v + l1 * b.v + l2 * c.v;
-                    int ui = static_cast<int>(std::floor(uu)) % t.tw;
-                    int vi = static_cast<int>(std::floor(vv)) % t.th;
-                    if (ui < 0) ui += t.tw;
-                    if (vi < 0) vi += t.th;
+                    const float q0 = l0 * ia, q1 = l1 * ib, q2 = l2 * ic;
+                    const float iq = 1.0f / (q0 + q1 + q2);
+                    const float uu = (q0 * a.u + q1 * b.u + q2 * c.u) * iq;
+                    const float vv = (q0 * a.v + q1 * b.v + q2 * c.v) * iq;
+                    // repeat, mirrored repeat (flip) or clamp, per axis
+                    auto wrapc = [](int c, int n, bool rep, bool flip) {
+                        if (!rep) return c < 0 ? 0 : (c >= n ? n - 1 : c);
+                        if (flip) {
+                            int m = c % (2 * n);
+                            if (m < 0) m += 2 * n;
+                            return m < n ? m : 2 * n - 1 - m;
+                        }
+                        int m = c % n;
+                        return m < 0 ? m + n : m;
+                    };
+                    const int ui = wrapc(static_cast<int>(std::floor(uu)), t.tw, t.wrap & 1, t.wrap & 4);
+                    const int vi = wrapc(static_cast<int>(std::floor(vv)), t.th, t.wrap & 2, t.wrap & 8);
                     texel = t.tex[vi * t.tw + ui];
                     if ((texel >> 24) == 0) continue;      // transparent texel
                 }
@@ -645,10 +918,142 @@ void gx_render(Framebuffer &fb) {
                     const int i = static_cast<int>(v * m + 0.5f);
                     return static_cast<uint32_t>(i < 0 ? 0 : (i > 255 ? 255 : i));
                 };
-                depth[y][x] = z;
-                fb.px[y][x] = 0xFF000000u | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+                const uint32_t src = (ch(16) << 16) | (ch(8) << 8) | ch(0);
+                if (layer) {
+                    // the pixel's alpha: the polygon's, times the texel's
+                    unsigned a = t.alpha;
+                    if (t.tex) a = (((a + 1) * ((texel >> 27) + 1)) - 1) >> 5;
+                    if (a == 0 || ((disp3d & 4) && a <= alpha_ref)) continue;
+                    const uint32_t dst = fb.px[y][x];
+                    const unsigned da = dst >> 24;
+                    if (a >= 31) {
+                        depth[y][x] = z;
+                        fb.px[y][x] = 31u << 24 | src;
+                    } else if (da == 0 || !(disp3d & 8)) {
+                        if (t.attr & 0x800) depth[y][x] = z;
+                        fb.px[y][x] = a << 24 | src;
+                    } else {
+                        if (t.attr & 0x800) depth[y][x] = z;
+                        uint32_t out = (a > da ? a : da) << 24;
+                        for (int sh = 0; sh < 24; sh += 8) {
+                            const uint32_t sc = (src >> sh) & 0xFF, dc = (dst >> sh) & 0xFF;
+                            out |= ((sc * (a + 1) + dc * (31 - a)) >> 5) << sh;
+                        }
+                        fb.px[y][x] = out;
+                    }
+                    continue;
+                }
+                if (t.alpha >= 31) {
+                    depth[y][x] = z;
+                    fb.px[y][x] = 0xFF000000u | src;
+                } else {
+                    // translucent: blended over what is there, depth kept
+                    const uint32_t dst = fb.px[y][x];
+                    const uint32_t a = t.alpha + 1;
+                    uint32_t out = 0xFF000000u;
+                    for (int sh = 0; sh < 24; sh += 8) {
+                        const uint32_t sc = (src >> sh) & 0xFF, dc = (dst >> sh) & 0xFF;
+                        out |= ((sc * a + dc * (32 - a)) >> 5) << sh;
+                    }
+                    fb.px[y][x] = out;
+                }
             }
         }
+    }
+}
+
+}  // namespace
+
+namespace {
+void render_now(Framebuffer &fb, bool layer) {
+    render_impl(fb, layer, g.swapped ? g.shown : g.tris,
+                static_cast<uint16_t>(io_read(0x04000060u, 2)),
+                static_cast<unsigned>(io_read(0x04000340u, 1)),
+                static_cast<uint32_t>(io_read(0x04000350u, 4)));
+}
+}  // namespace
+void gx_render(Framebuffer &fb) { render_now(fb, false); }
+void gx_render_layer(Framebuffer &fb) { render_now(fb, true); }
+
+void gx_capture_frame(GxFrame &out) {
+    out.tris = g.swapped ? g.shown : g.tris;
+    out.keep.clear();
+    for (const auto &e : g_vram_tex_cache) out.keep.push_back(e.second);
+    for (const auto &e : g_retired) out.keep.push_back(e.second);
+    out.disp3d = static_cast<uint16_t>(io_read(0x04000060u, 2));
+    out.alpha_ref = static_cast<uint8_t>(io_read(0x04000340u, 1));
+    out.clear = static_cast<uint32_t>(io_read(0x04000350u, 4));
+}
+
+void gx_render_frame(const GxFrame &frame, Framebuffer &fb) {
+    render_impl(fb, true, frame.tris, frame.disp3d, frame.alpha_ref, frame.clear);
+}
+
+void gx_debug_stats(uint32_t out[6]) {
+    out[0] = g_stats.cmds;
+    out[1] = g_stats.vtx;
+    out[2] = g_stats.swaps;
+    out[3] = g_stats.last_shown;
+    out[4] = static_cast<uint32_t>(g.tris.size());
+    out[5] = g_stats.proj_loads;
+}
+
+void gx_record_start(size_t max_words) {
+    g_rec.clear();
+    g_rec.reserve(max_words < (1u << 20) ? max_words : (1u << 20));
+    g_rec_cap = max_words;
+    g_recording = true;
+}
+void gx_record_stop() { g_recording = false; }
+const uint32_t *gx_record_data(size_t &words) {
+    words = g_rec.size();
+    return g_rec.data();
+}
+void gx_ring_enable(size_t words) {
+    std::free(g_ring);
+    g_ring = nullptr;
+    g_ring_pos = 0;
+    g_ring_at = 0;
+    g_ring_frames = 0;
+    if (!words) return;
+    g_ring = static_cast<uint32_t *>(std::malloc(words * 4));
+    g_ring_n = g_ring ? words : 0;
+    g_ring_starts[g_ring_frames++] = 0;
+}
+bool gx_ring_active() { return g_ring != nullptr; }
+void gx_ring_mark(uint32_t tag) {
+    if (!g_ring) return;
+    ring_put(0x00 | 1u << 8);                 // a NOP with one word: the tag
+    ring_put(tag);
+}
+size_t gx_ring_view(const uint32_t *part[2], size_t words[2], uint32_t &frames) {
+    part[0] = part[1] = nullptr;
+    words[0] = words[1] = 0;
+    frames = 0;
+    if (!g_ring) return 0;
+    // the oldest frame start still whole in the buffer, up to now
+    const uint64_t end = g_ring_pos, low = end > g_ring_n ? end - g_ring_n : 0;
+    const uint32_t keep = g_ring_frames < 512 ? g_ring_frames : 512;
+    uint64_t from = end;
+    for (uint32_t k = keep; k-- > 0;) {
+        const uint64_t s = g_ring_starts[(g_ring_frames - 1 - k) % 512];
+        if (s >= low) { from = s; frames = k; break; }       // whole frames
+    }
+    // in place, as one or two runs of the circular buffer
+    const uint64_t a = from % g_ring_n, n = end - from;
+    part[0] = g_ring + a;
+    words[0] = (size_t)(a + n <= g_ring_n ? n : g_ring_n - a);
+    if (words[0] < n) { part[1] = g_ring; words[1] = (size_t)(n - words[0]); }
+    return (size_t)n;
+}
+void gx_replay(const uint32_t *w, size_t words) {
+    size_t i = 0;
+    while (i < words) {
+        const uint8_t cmd = w[i] & 0xff;
+        const int np = (w[i] >> 8) & 0xff;
+        if (i + 1 + np > words) break;
+        exec(cmd, w + i + 1, np);
+        i += 1 + np;
     }
 }
 

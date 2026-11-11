@@ -1101,6 +1101,11 @@ extern "C" int func_ov070_0211f0a4(daPropeller_Heyho_c *c) {
     unsigned int coins = (unsigned char)c->mExtraCoinCount + 1;
     c->SpawnCoins(pos, coins, 0xa000, 0);
     c->KillAndTrackInDeathTable();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* Static-init globals (was the handwritten __sinit_ov070_02122afc shard).

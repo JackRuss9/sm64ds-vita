@@ -183,6 +183,11 @@ int daObjYajirusi_c::OnAttacked1(dActor_c &other) {
     if (r == 0)
         return;
     Kill();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // 0x02137ccc (0x74)

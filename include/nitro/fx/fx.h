@@ -20,8 +20,13 @@
  */
 
 typedef signed int fx32;
+#if defined(SM64DS_PLATFORM_PC) && defined(__GNUC__) && defined(__arm__)
+typedef signed long long fx64 __attribute__((aligned(4)));   /* DS layout: see types.h */
+typedef signed long long fx64c __attribute__((aligned(4)));
+#else
 typedef signed long long fx64;
 typedef signed long long fx64c;
+#endif
 
 #define FX32_SHIFT 12
 #define FX32_CAST(x) ((fx32)(x))

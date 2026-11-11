@@ -17,11 +17,21 @@
 
 #include "types.h"
 
+#if defined(__cplusplus) && defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)
+/* g++ will not let a cv-qualified typedef reuse its own struct tag; the host
+   C++ build names the tag apart. Same type, same layout. */
+typedef volatile struct OSLockWord_ {
+    u32 lockFlag;
+    u16 ownerID;
+    u16 extension;
+} OSLockWord;
+#else
 typedef volatile struct OSLockWord {
     u32 lockFlag;
     u16 ownerID;
     u16 extension;
 } OSLockWord;
+#endif
 
 /* Main-memory lock words, at the top of the shared work area. */
 #define HW_LOCK_ID_FLAG_MAIN 0x027fffb0 /* two u32 masks of free ARM9 lock IDs */

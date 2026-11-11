@@ -127,6 +127,11 @@ void daObjBk_Kabe_c::Kill() {
 // @symbol _ZN14daObjBk_Kabe_c24OnHitByCannonBlastedCharER8dActor_c
 int daObjBk_Kabe_c::OnHitByCannonBlastedChar(dActor_c &other) {
     Kill();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN14daObjBk_Kabe_c16CleanupResourcesEv

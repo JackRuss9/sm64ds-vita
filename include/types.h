@@ -9,8 +9,17 @@ typedef unsigned int   u32;
 typedef signed char    s8;
 typedef signed short   s16;
 typedef signed int     s32;
+#if defined(SM64DS_PLATFORM_PC) && defined(__GNUC__) && defined(__arm__)
+/* mwccarm aligns 64-bit integers to 4 bytes; GCC for ARM (AAPCS) to 8, which
+   would move every 64-bit member off its DS offset (OSAlarm's fire/period/start
+   at 0x0c/0x1c/0x24 became 0x10/0x20/0x28). A typedef may lower alignment, so
+   the host build keeps the DS layout; GCC emits accesses fit for 4. */
+typedef unsigned long long u64 __attribute__((aligned(4)));
+typedef signed long long   s64 __attribute__((aligned(4)));
+#else
 typedef unsigned long long u64;
 typedef signed long long   s64;
+#endif
 
 /* size_t, which C++ requires as the first parameter of every `operator new`.
    The two compilers that build this tree spell it differently and each refuses

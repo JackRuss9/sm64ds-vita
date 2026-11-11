@@ -1,0 +1,22 @@
+# Gate-9 additions for GCC builds (PS Vita).
+#
+# Under the Itanium ABI the compiler emits the real dActor_c / dBgActor_c /
+# dBgW_KcMbg vtables, and with them every slot: the small geometry and
+# ground-ray classes they name are linked for real here (the MSVC build
+# traps those slots instead; see hal/actor_ctor_bridge.cpp).
+src/engine/collision/d_m3d_g_sph.cpp
+src/engine/collision/d_m3d_g_lin.cpp
+src/engine/collision/d_bg_ch_gnd.cpp
+src/runtime/actor/ActorDerived.cpp
+# Small vector/matrix helpers the dActor_c and dBgActor_c bodies call (spawn
+# transform, clip centre, mega-char knockback); plain C, no hardware.
+src/Vec3_Add.c
+src/AddVec3.c
+src/Vec3_Asr.c
+src/Vec3_HorzAngle.cpp
+src/DecIfAbove0_Byte.c
+src/Matrix4x3_FromTranslation.c
+src/Matrix4x3_ApplyInPlaceToRotationZXYExt.c
+src/Matrix4x3_ApplyInPlaceToTranslation.c
+src/Matrix4x3_FromRotationX.c
+src/Matrix4x3_FromRotationZ.c

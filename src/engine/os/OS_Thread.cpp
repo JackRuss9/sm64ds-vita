@@ -161,7 +161,13 @@ void OS_InitThread(void) {
     data_020a6134.current = &data_020a621c;
 
     if ((s32)SDK_SYS_STACKSIZE == 0) {
+#if defined(SM64DS_PLATFORM_PC)
+        /* Host: DTCM (0x023c0000) is the data_023c0000 block; the literal
+           address would be stored through as is. */
+        stackLo = (u32)data_023c0000 + 0x20 - (s32)SDK_SYS_STACKSIZE;
+#else
         stackLo = 0x23c0020 - (s32)SDK_SYS_STACKSIZE;
+#endif
     } else {
         stackLo = (u32)data_023c0000 + 0x3fc0 - (s32)SDK_IRQ_STACKSIZE - (s32)SDK_SYS_STACKSIZE;
     }

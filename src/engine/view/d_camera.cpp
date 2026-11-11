@@ -253,10 +253,22 @@ extern "C" dCamera_c *dCamera_c_classInit()
     dCamera_c *camera = (dCamera_c *)fBase_c::operator new(sizeof(dCamera_c));
     if (camera) {
         _ZN7fBase_cC2Ev(camera);
+#if defined(SM64DS_PLATFORM_PC)
+        /* Host: the names are GCC's own vtables, whose first two words are
+           offset-to-top and typeinfo; an object points past them (the
+           ROM's symbols sit at that point already). The bare address made
+           every virtual call land two slots early -- InitResources ran
+           the typeinfo. */
+        *(void ***)camera = (void **)&_ZTV7dBase_c + 2;
+        *(void ***)camera = (void **)&_ZTV7dView_c + 2;
+        Matrix4x3_LoadIdentity(&camera->viewMat);
+        *(void ***)camera = (void **)&_ZTV9dCamera_c + 2;
+#else
         *(void ***)camera = (void **)&_ZTV7dBase_c;
         *(void ***)camera = (void **)&_ZTV7dView_c;
         Matrix4x3_LoadIdentity(&camera->viewMat);
         *(void ***)camera = (void **)&_ZTV9dCamera_c;
+#endif
     }
     return camera;
 }
@@ -785,6 +797,12 @@ void dCamera_c::GoBehindPlayer(unsigned int j)
 
     slot4 = (int)mMode;
     slotc = 0;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves slot8 (the view record func_0200c66c may read back)
+       uninitialized: on the DS a stale stack word reads harmlessly, on the
+       host it was a wild pointer, read on a door into a castle room. */
+    slot8 = 0;
+#endif
     func_0200c66c(this, &mTargetPlayer->mPos, &slot8, &slot4, &slotc);
     if (slot4 == (int)&data_020873dc)
         return;
@@ -3887,6 +3905,11 @@ void func_02007d0c(Vector3 *self, const Vector3 *src, int stepX, int stepY, int 
    there is no return statement. */
 int func_02007cec(void *dest, const Vector3 *src, int step) {
     func_02007d0c((Vector3 *)dest, src, step, step, step);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol func_02007c9c

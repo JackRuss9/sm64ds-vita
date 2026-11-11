@@ -18,7 +18,11 @@
 #ifndef NTR_GX_H
 #define NTR_GX_H
 
+#include <stddef.h>
 #include <stdint.h>
+
+#include <memory>
+#include <vector>
 
 #include "ntr/ppu.h"
 
@@ -29,6 +33,7 @@ struct GxVertex {
     float x, y, z, w;      // x/y in pixels, z in [0,1] after divide
     float u, v;            // texel coordinates (DS TEXCOORD is 1.4 fixed point)
     uint32_t color;        // 0xAARRGGBB
+    float cx, cy, cz;      // clip-space position (with w above): what clipping works on
 };
 
 // The bound texture travels with the triangle. Material state is set by the
@@ -38,6 +43,14 @@ struct GxTriangle {
     GxVertex v[3];
     const uint32_t *tex;   // decoded RGBA, or null for untextured
     int tw, th;
+    // From the POLYGON_ATTR in force at its BEGIN_VTXS (GBATEK 4000440h+0x29):
+    // which faces draw (bit 0 back, bit 1 front) and alpha 0..31 (0 is
+    // wireframe, 31 opaque). Harnesses that never send one get front + 31.
+    uint8_t faces = 2, alpha = 31;
+    uint32_t attr = 0x001F0080u;   // the whole POLYGON_ATTR word (mode bits 4-5, ID 24-29)
+    // TEXIMAGE_PARAM bits 16-19: repeat S, repeat T, flip S, flip T (a
+    // texture that neither repeats nor flips is clamped to its edge texels)
+    uint8_t wrap = 3;
 };
 
 // Feed the engine. `gx_write_port` takes a geometry-port address in
@@ -79,10 +92,49 @@ void gx_enable_lights(uint32_t mask);           // bits 0..3
 
 // Polygons emitted since the last gx_reset / SWAP_BUFFERS.
 const GxTriangle *gx_polygons(size_t &count);
+// Counters for a log: geometry commands run, vertex commands, SWAP_BUFFERS
+// seen, triangles in the last swapped frame, triangles in the frame being built,
+// projection-matrix loads (LOAD/MULT in projection mode).
+void gx_debug_stats(uint32_t out[6]);
+// Record every executed geometry command (up to max_words 32-bit words) for
+// an offline replay of the exact 3D state: gx_reset() then gx_replay().
+void gx_record_start(size_t max_words);
+void gx_record_stop();
+const uint32_t *gx_record_data(size_t &words);
+void gx_replay(const uint32_t *words, size_t count);
+// The rolling recorder: the same record, always on, kept for the last
+// `words` words (0 turns it off and frees it); gx_ring_mark drops a tag (a
+// NOP with one parameter word, harmless on replay) in the stream, and
+// gx_ring_view points at the whole frames still held (from just after a
+// SWAP_BUFFERS) up to now, `frames` of them, in place: one or two runs of
+// the circular buffer, in order; it returns the words in all.
+void gx_ring_enable(size_t words);
+bool gx_ring_active();
+void gx_ring_mark(uint32_t tag);
+size_t gx_ring_view(const uint32_t *part[2], size_t words[2], uint32_t &frames);
 
 // Rasterise them into fb with a depth buffer. Does not clear fb -- the 3D layer
 // composites over whatever the 2D engine already drew.
 void gx_render(Framebuffer &fb);
+// The 3D layer as the 2D engine receives it: cleared to CLEAR_COLOR, each
+// pixel's alpha (0 transparent .. 31 opaque) in the top byte, translucency and
+// the alpha test as the DS applies them. For ppu_compose.
+void gx_render_layer(Framebuffer &fb);
+
+// The same picture drawn elsewhere, later: gx_capture_frame copies what a
+// render reads -- the shown triangle list, the 3D control registers, and a
+// reference to every decoded texture those triangles may point at -- and
+// gx_render_frame draws it. The game's thread captures (cheap); another
+// thread renders while the game runs on.
+struct GxFrame {
+    std::vector<GxTriangle> tris;
+    std::vector<std::shared_ptr<const std::vector<uint32_t>>> keep;
+    uint16_t disp3d = 0;
+    uint8_t alpha_ref = 0;
+    uint32_t clear = 0;
+};
+void gx_capture_frame(GxFrame &out);
+void gx_render_frame(const GxFrame &frame, Framebuffer &fb);
 
 }  // namespace ntr
 

@@ -43,7 +43,11 @@ typedef struct Ov007Camera {
     unsigned char viewportMaxX;
     unsigned char viewportMinY;
     unsigned char viewportMaxY;
+#if defined(SM64DS_PLATFORM_PC) && defined(__GNUC__) && defined(__arm__)
+    long long aspect __attribute__((packed, aligned(4)));   /* 0xbc, DS layout: see types.h */
+#else
     long long aspect; /* 0xbc: PerspectiveW_ takes it >> 0x14 */
+#endif
     int nearZ;        /* 0xc4 */
     int farZ;         /* 0xc8 */
     int wordCC;       /* 0xcc: 0x1000 on reset; no reader found */
@@ -52,6 +56,10 @@ typedef struct Ov007Camera {
     unsigned short fovy;
 } Ov007Camera;
 
+#if defined(SM64DS_PLATFORM_PC) && defined(__GNUC__) && defined(__arm__)
+typedef char Ov007Camera_aspect_must_be_at_0xbc[__builtin_offsetof(Ov007Camera, aspect) == 0xbc ? 1 : -1];
+typedef char Ov007Camera_fovy_must_be_at_0xd4[__builtin_offsetof(Ov007Camera, fovy) == 0xd4 ? 1 : -1];
+#endif
 #ifndef SM64DS_PLATFORM_PC
 /* aspect at 0xbc relies on long long taking 4-byte alignment here. */
 typedef char Ov007Camera_aspect_must_be_at_0xbc[(int)&((Ov007Camera *)0)->aspect == 0xbc ? 1 : -1];

@@ -8,6 +8,7 @@
  * and both optionally mirror the matrix into a caller's Matrix4x3.
  */
 // leftovers: func_02055998 keeps its address name (no recovered name exists).
+#include "gx_port_write.h"
 #include "G3i.h"
 #include "math/Matrix.h"
 #include "nitro/fx/fx.h"
@@ -61,16 +62,16 @@ void G3i::PerspectiveW_(Fix12i sinF, Fix12i cosF, Fix12i aspect, Fix12i n, Fix12
     *(volatile u64 *)0x4000290 = (u64)0x1000 << 32;
     *(volatile u64 *)0x4000298 = (unsigned)(n - f);
     if (flag) {
-        *port = xx;
-        *port = 0;
-        *port = 0;
-        *port = 0;
-        *port = 0;
-        *port = tmp;
-        *port = 0;
-        *port = 0;
-        *port = 0;
-        *port = 0;
+        GX_PORT_WRITE(port, xx);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, tmp);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
     }
     if (mtx) {
         mtx[0] = xx;
@@ -83,12 +84,12 @@ void G3i::PerspectiveW_(Fix12i sinF, Fix12i cosF, Fix12i aspect, Fix12i n, Fix12
     v = FX_MUL((n << 1), f);
     wz = (int)((q * v + 0x80000000LL) >> 32);
     if (flag) {
-        *port = zz;
-        *port = -scaleW;
-        *port = 0;
-        *port = 0;
-        *port = wz;
-        *port = 0;
+        GX_PORT_WRITE(port, zz);
+        GX_PORT_WRITE(port, -scaleW);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, 0);
+        GX_PORT_WRITE(port, wz);
+        GX_PORT_WRITE(port, 0);
     }
     if (mtx) {
         mtx[10] = zz;
@@ -122,15 +123,15 @@ void G3i::LookAt_(const Vector3 *camPos, const Vector3 *up, const Vector3 *targe
     if (draw) {
         *(volatile int *)0x4000440 = 2;
         mtx = (volatile int *)0x400045c;
-        *mtx = right.x;
-        *mtx = up2.x;
-        *mtx = forward.x;
-        *mtx = right.y;
-        *mtx = up2.y;
-        *mtx = forward.y;
-        *mtx = right.z;
-        *mtx = up2.z;
-        *mtx = forward.z;
+        GX_PORT_WRITE(mtx, right.x);
+        GX_PORT_WRITE(mtx, up2.x);
+        GX_PORT_WRITE(mtx, forward.x);
+        GX_PORT_WRITE(mtx, right.y);
+        GX_PORT_WRITE(mtx, up2.y);
+        GX_PORT_WRITE(mtx, forward.y);
+        GX_PORT_WRITE(mtx, right.z);
+        GX_PORT_WRITE(mtx, up2.z);
+        GX_PORT_WRITE(mtx, forward.z);
     }
 
     tx = -DotVec3(camPos, &right);
@@ -138,9 +139,9 @@ void G3i::LookAt_(const Vector3 *camPos, const Vector3 *up, const Vector3 *targe
     tz = -DotVec3(camPos, &forward);
 
     if (draw) {
-        *mtx = tx;
-        *mtx = ty;
-        *mtx = tz;
+        GX_PORT_WRITE(mtx, tx);
+        GX_PORT_WRITE(mtx, ty);
+        GX_PORT_WRITE(mtx, tz);
     }
 
     if (mat == 0) {

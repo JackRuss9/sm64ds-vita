@@ -876,6 +876,11 @@ int daKuriKing_c::func_ov074_021203e4(int i) {
     int j = mState;
     KuriKingPmf *c = (KuriKingPmf *)this;
     (c->*data_ov074_021230f8.entries[j].pmf[0])();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN12daKuriKing_c19func_ov074_0212042cEv
@@ -1469,6 +1474,11 @@ int daKuriKing_c::func_ov074_021216f4()
         this->mPosZ = FX_MUL(data_02082214[(((u16)this->mWalkAngle) >> 4) * 2 + 1], 0x546000);
     }
     ApproachAngle(&this->mAngleY, (short)((this->mDirection * 0x4500) + this->mWalkAngle), 0xa, 0x800, 0x10);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN12daKuriKing_c19func_ov074_02121800Ev

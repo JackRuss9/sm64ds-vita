@@ -165,7 +165,10 @@ struct daBombking_c : dEnemyBase_c {
 /* ~daBombking_c, the key function, owns the compiler-emitted definition of this
  * vtable. The factory is `return new daBombking_c()`, which calls the
  * inherited fBase_c::operator new (`_ZN7fBase_cnwEm`). */
-extern int _ZTV12daBombking_c[];
+/* C linkage, as include/decl_common.h declares it: a variable's symbol is not
+ * mangled, so this is the same declaration on the DS, and g++ rejects the two
+ * spellings meeting in one TU. */
+extern "C" int _ZTV12daBombking_c[];
 
 #ifndef SM64DS_PLATFORM_PC
 /* ROM layout under mwccarm; host ABI divergence is tracked separately. */

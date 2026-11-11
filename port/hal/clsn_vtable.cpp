@@ -14,6 +14,12 @@
 #include "dBgCh.h"
 #include "SurfaceInfo.h"
 
+// Under GCC/Clang (Itanium ABI) every C spelling below IS the C++ symbol the
+// compiler emits, and the real _ZTV7dBgW_Kc/_ZTV10dBgW_KcMbg come out of their
+// key-function TUs with the ROM's slot order. So the forwarders and the
+// synthetic MSVC tables exist only for MSVC; elsewhere hal_fill_mmc_vtable is
+// a no-op.
+#if defined(_MSC_VER)
 namespace cstd {
 int sqrt(unsigned long long);
 int fdiv_result();
@@ -80,3 +86,6 @@ void hal_fill_mmc_vtable(void)
         _ZTV10dBgW_KcMbg[i] = _ZTV7dBgW_Kc[i];
 }
 }
+#else
+extern "C" void hal_fill_mmc_vtable(void) {}
+#endif

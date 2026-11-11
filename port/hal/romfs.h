@@ -36,6 +36,17 @@ uint8_t *read_file(unsigned file_id, size_t *size);
 // its own, so it works before (and independently of) open().
 uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len);
 
+// ARM9 overlay `ov_id` from `rom_path` as it sits in RAM once loaded:
+// decompressed, malloc'd (caller frees), *ram_base its load address, *len its
+// initialized size (the OVT's bss follows in RAM and is not part of this).
+// Opens the ROM on its own, like read_arm9. nullptr if the id or image is bad.
+uint8_t *read_overlay(const char *rom_path, unsigned ov_id, uint32_t *ram_base, size_t *len);
+
+// The 32-byte ARM9 OVT record of overlay `ov_id` (GBATEK: id, RAM address,
+// RAM size, BSS size, sinit start/end, file id, compressed size | flags).
+// Opens the ROM on its own. False if the id is out of range.
+bool read_ovt_entry(const char *rom_path, unsigned ov_id, uint8_t out[32]);
+
 // Nintendo's backward LZ ("BLZ"), the ARM9/overlay code compression. `src` is
 // the whole compressed file (footer included); returns the decompressed image,
 // malloc'd, or nullptr if the footer is inconsistent. Exposed for tests.

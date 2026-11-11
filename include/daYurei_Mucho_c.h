@@ -85,7 +85,16 @@ struct daYurei_Mucho_c : dEnemyBase_c {
 /* Inline destructor is the key function, so this TU emits the vtable. The
  * factory is `return new daYurei_Mucho_c()`, which calls the inherited
  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
+/* C linkage, as include/decl_common.h declares it: a variable symbol is not
+ * mangled, so this is the same declaration on the DS, and g++ rejects the
+ * two spellings meeting in one TU. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern int _ZTV15daYurei_Mucho_c[];
+#ifdef __cplusplus
+}
+#endif
 
 #ifndef SM64DS_PLATFORM_PC
 /* ROM layout under mwccarm; host ABI divergence is tracked separately. */

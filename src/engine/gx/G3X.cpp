@@ -48,7 +48,7 @@ void func_020557b4(void);
 void func_0205583c(void);
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 
 // G3X_Init
 extern "C" void func_0205583c(void) {
@@ -103,7 +103,7 @@ extern "C" void func_02055780(void) {
         ;
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 
 // G3X_InitMtxStack
 extern "C" void func_020556d0(void) {
@@ -169,7 +169,11 @@ extern "C" void func_020555a4(void *dst) {
 
 void G3X::SetClearColor(unsigned short a, int b, int c, int d, bool e) {
     unsigned int v = (a | (b << 16)) | (d << 24);
+#if defined(SM64DS_PLATFORM_PC)
+    if (e) /* host: a bool argument is one byte; the word load is the DS's */
+#else
     if (*(int *)&e)
+#endif
         v |= 0x8000; // bool slot reads whole-word (see the banner)
     *(volatile unsigned int *)0x4000350 = v;
     *(volatile unsigned short *)0x4000354 = (unsigned short)c;

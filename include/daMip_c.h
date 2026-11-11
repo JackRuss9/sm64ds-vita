@@ -172,6 +172,15 @@ typedef char daMip_c_size_must_be_0x474[sizeof(daMip_c) == 0x474 ? 1 : -1];
 /* ~daMip_c, the key function, owns the compiler-emitted definition of this
  * vtable. The factory is `return new daMip_c()`, which calls the inherited
  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
+/* C linkage, as include/decl_common.h declares it: a variable symbol is not
+ * mangled, so this is the same declaration on the DS, and g++ rejects the
+ * two spellings meeting in one TU. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern int _ZTV7daMip_c[];
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* DAMIP_C_H */

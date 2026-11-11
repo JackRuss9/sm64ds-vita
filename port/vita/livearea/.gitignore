@@ -1,0 +1,4 @@
+# The bubble and LiveArea pictures are the user's own copies of game art:
+# never committed. Put icon0.png, bg.png, startup.png (and pic0.png) here.
+*.png
+*.jpg

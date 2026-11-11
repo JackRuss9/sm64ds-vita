@@ -1,0 +1,66 @@
+diff --git a/port/tools/romimage.py b/port/tools/romimage.py
+index 2222790..079e60d 100644
+--- a/port/tools/romimage.py
++++ b/port/tools/romimage.py
+@@ -220,6 +220,7 @@ def main():
+         v.sort()
+ 
+     exact_at = {mn: {ad: nm for ad, nm, k, _ in mm.syms} for mn, mm in mods.items()}
++    reloc_from = {mn: {f for f, k, _t, _m, _a in mm.relocs if k == 'load'} for mn, mm in mods.items()}
+     guesses = []            # ambiguous overlay pointers settled by default
+     patches = []            # (storage idx, offset, target)
+     stats = collections.Counter()
+@@ -251,8 +252,14 @@ def main():
+                 else:
+                     exact = [c for c in cands if to in exact_at.get(c, {})]
+                     named = [c for c in exact if not re.match(r'(data|func)_|@', exact_at[c][to])]
++                    # pointer-bearing targets: where the candidate's map has a
++                    # pointer AT that address (an actor profile starts with its
++                    # factory), a string or a plain table does not
++                    linked = [c for c in (named or exact) if to in reloc_from.get(c, set())]
+                     if len(named) == 1:
+                         tm, why = named[0], 'named symbol'
++                    elif len(linked) == 1:
++                        tm, why = linked[0], 'pointer-bearing target'
+                     else:
+                         pool = named or exact or cands
+                         core = [c for c in ('ov000', 'ov002') if c in pool]
+@@ -270,6 +277,38 @@ def main():
+             patches.append((sidx, frm - storages[sidx]['addr'], r))
+             stats['patch'] += 1
+ 
++    # ACTOR_SPAWN_TABLE entries the map records no relocation for (four in the
++    # EUR map: RESULT, BK_UKISIMA, BATTA_BLOCK, PICTURE_GATE): the entry is
++    # still a profile pointer, and symbols/actor_debug_names.tsv plus the
++    # g_profile_<NAME> symbol name it.
++    names_tsv = os.path.join(os.path.dirname(a.config.rstrip('/')), '..', 'symbols', 'actor_debug_names.tsv')
++    names_tsv = os.path.normpath(names_tsv)
++    spawn = [(ad, nm) for ad, nm, k, _ in mods['main'].syms if nm == 'ACTOR_SPAWN_TABLE']
++    key = by_key.get(('main', spawn[0][0])) if spawn else None
++    if spawn and isinstance(key, int) and os.path.exists(names_tsv):
++        base = spawn[0][0]
++        have = {off for si, off, _r in patches if si == key}
++        prof = {}
++        for mn, mm in mods.items():
++            for ad, nm, k, _ in mm.syms:
++                if nm.startswith('g_profile_'):
++                    prof.setdefault(nm, []).append((mn, ad))
++        for l in open(names_tsv):
++            parts = l.rstrip('\n').split('\t')
++            if len(parts) < 2 or not parts[0].isdigit():
++                continue
++            aid, name = int(parts[0]), parts[1]
++            off = 4 * aid
++            if off in have or off + 4 > storages[key]['size']:
++                continue
++            hits = prof.get('g_profile_' + name, [])
++            if len(hits) != 1:
++                continue
++            r = resolve(hits[0][0], hits[0][1])
++            if r is not None:
++                patches.append((key, off, r))
++                stats['spawn-table entry named by profile'] += 1
++
+     # A DS pointer to something the host binary does not have (the DS's static
+     # initializers __sinit_*, which the host C++ runtime replaces; the DS C++
+     # runtime's own RTTI classes) is written as null rather than linked: the

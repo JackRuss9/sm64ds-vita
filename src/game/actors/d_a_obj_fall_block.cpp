@@ -468,6 +468,11 @@ s32 daObjFallBlock_c::InitResourcesFrom(ResourceDescriptor *fp) {
    drops mov r1,r2. */
 int daObjFallBlock_c::RequestShake(dActor_c *other) {
     mShakeRequested = 1;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN16daObjFallBlock_c15StoodOnCallbackEP4dBgWPS_P8dActor_c

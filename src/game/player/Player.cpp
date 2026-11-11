@@ -3487,6 +3487,11 @@ int Player::func_ov002_020c25a8(int arg1)
     ret = c->func_ov002_020c2138();
     if (ret != 0)
         return ret;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 }
 

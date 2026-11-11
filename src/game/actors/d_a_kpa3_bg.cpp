@@ -201,6 +201,11 @@ int daKpa3Bg_c::func_ov060_021181b4() {
         mState = 1;
         return 1;
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN10daKpa3Bg_c19func_ov060_021180e0Ev

@@ -5,6 +5,7 @@
 // ndspy, the library tools/asset_catalog.py uses. No SDK or emulator code.
 #include "romfs.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -260,15 +261,105 @@ bool open(const char *rom_path,
     return ok;
 }
 
-uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
+bool read_ovt_entry(const char *rom_path, unsigned ov_id, uint8_t out[32]) {
     FILE *f = fopen(rom_path, "rb");
-    if (!f) return nullptr;
+    if (!f) return false;
+    uint8_t hdr[0x60];
+    bool ok = fread(hdr, 1, sizeof hdr, f) == sizeof hdr;
+    if (ok) {
+        const uint32_t ovt_off = rd32(hdr + HDR_OVT9_OFF), ovt_size = rd32(hdr + HDR_OVT9_SIZE);
+        ok = (ov_id + 1) * 0x20u <= ovt_size &&
+             fseek(f, (long)(ovt_off + ov_id * 0x20u), SEEK_SET) == 0 &&
+             fread(out, 1, 32, f) == 32;
+    }
+    fclose(f);
+    return ok;
+}
+
+uint8_t *read_overlay(const char *rom_path, unsigned ov_id, uint32_t *ram_base, size_t *len) {
+    FILE *f = fopen(rom_path, "rb");
+    if (!f) {
+        fprintf(stderr, "romfs: fopen(%s) failed, errno %d (%s)\n",
+                rom_path, errno, strerror(errno));
+        return nullptr;
+    }
+    uint8_t *out = nullptr;
+    uint8_t hdr[0x60], ent[0x20], fat[8];
+    do {
+        if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) break;
+        const uint32_t ovt_off = rd32(hdr + HDR_OVT9_OFF), ovt_size = rd32(hdr + HDR_OVT9_SIZE);
+        const uint32_t fat_off = rd32(hdr + HDR_FAT_OFF), fat_size = rd32(hdr + HDR_FAT_SIZE);
+        if ((ov_id + 1) * 0x20u > ovt_size) {
+            fprintf(stderr, "romfs: overlay %u is not in the OVT\n", ov_id);
+            break;
+        }
+        // GBATEK OVT record: id, ram address, ram size, bss size, sinit start,
+        // sinit end, file id, then compressed size (24 bits) | flags << 24.
+        if (fseek(f, (long)(ovt_off + ov_id * 0x20u), SEEK_SET) != 0 ||
+            fread(ent, 1, sizeof ent, f) != sizeof ent) break;
+        const uint32_t ram = rd32(ent + 4), ram_size = rd32(ent + 8);
+        const uint32_t file_id = rd32(ent + 0x18), word = rd32(ent + 0x1C);
+        if ((file_id + 1) * 8u > fat_size ||
+            fseek(f, (long)(fat_off + file_id * 8u), SEEK_SET) != 0 ||
+            fread(fat, 1, 8, f) != 8) break;
+        const uint32_t start = rd32(fat), end = rd32(fat + 4);
+        if (end < start || end - start >= (16u << 20)) break;
+        uint32_t size = end - start;
+        uint8_t *raw = (uint8_t *)malloc(size ? size : 1);
+        if (!raw) break;
+        if (fseek(f, (long)start, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
+            free(raw); break;
+        }
+        if ((word >> 24) & 1) {          // BLZ-compressed, stream bounded by the OVT
+            const uint32_t comp = word & 0xFFFFFF;
+            out = blz_decompress(raw, comp && comp <= size ? comp : size, len);
+            free(raw);
+        } else {
+            out = raw;
+            *len = size;
+        }
+        if (out && *len > ram_size && ram_size) *len = ram_size;
+        if (out) *ram_base = ram;
+    } while (0);
+    if (!out) fprintf(stderr, "romfs: could not read overlay %u from %s\n", ov_id, rom_path);
+    fclose(f);
+    return out;
+}
+
+uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
+    // Each failure says which step failed: "could not read the ARM9" alone
+    // cannot tell a missing file from a short read or a full heap.
+    FILE *f = fopen(rom_path, "rb");
+    if (!f) {
+        fprintf(stderr, "romfs: fopen(%s) failed, errno %d (%s)\n",
+                rom_path, errno, strerror(errno));
+        return nullptr;
+    }
     uint8_t hdr[0x30];
-    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return nullptr; }
+    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) {
+        fprintf(stderr, "romfs: header read failed (file shorter than 0x30?)\n");
+        fclose(f); return nullptr;
+    }
     // GBATEK header: 0x20 ARM9 ROM offset, 0x28 RAM address, 0x2C size.
     const uint32_t off = rd32(hdr + 0x20), ram = rd32(hdr + 0x28), size = rd32(hdr + 0x2C);
-    uint8_t *raw = (size >= 8 && size < (64u << 20)) ? (uint8_t *)malloc(size) : nullptr;
-    if (!raw || fseek(f, (long)off, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
+    if (size < 8 || size >= (64u << 20)) {
+        fprintf(stderr, "romfs: implausible ARM9 size 0x%x in the header\n", (unsigned)size);
+        fclose(f); return nullptr;
+    }
+    uint8_t *raw = (uint8_t *)malloc(size);
+    if (!raw) {
+        fprintf(stderr, "romfs: malloc(0x%x) for the ARM9 failed\n", (unsigned)size);
+        fclose(f); return nullptr;
+    }
+    if (fseek(f, (long)off, SEEK_SET) != 0) {
+        fprintf(stderr, "romfs: fseek to ARM9 offset 0x%x failed, errno %d\n",
+                (unsigned)off, errno);
+        free(raw); fclose(f); return nullptr;
+    }
+    const size_t got = fread(raw, 1, size, f);
+    if (got != size) {
+        fprintf(stderr, "romfs: ARM9 read got 0x%x of 0x%x bytes at 0x%x, errno %d\n",
+                (unsigned)got, (unsigned)size, (unsigned)off, errno);
         free(raw); fclose(f); return nullptr;
     }
     fclose(f);
@@ -291,6 +382,8 @@ uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
         *len = size;
     }
     if (out) *ram_base = ram;
+    else fprintf(stderr, "romfs: ARM9 BLZ decompression failed (stream 0x%x)\n",
+                 (unsigned)stream);
     return out;
 }
 

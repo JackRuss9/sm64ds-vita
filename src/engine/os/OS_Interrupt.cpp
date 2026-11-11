@@ -36,7 +36,7 @@ void OSi_EnterDmaCallback(u32 idx, u32 handler, u32 arg);
 void OSi_EnterTimerCallback(u32 idx, u32 handler, u32 arg);
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 
 // OS_InitThreadQueue(&OSi_IrqThreadQueue): this SDK's thread queue is a u16
 // mask of thread ids, and the IRQ thread queue is the first halfword of DTCM.
@@ -98,7 +98,7 @@ extern "C" void OSi_EnterDmaCallback(u32 idx, u32 handler, u32 arg) {
     data_020a60c4[idx].enabled = prev_ie & (1u << (idx + 8));
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 
 // Installs a timer's overflow callback and enables its interrupt.
 extern "C" void OSi_EnterTimerCallback(u32 idx, u32 handler, u32 arg) {

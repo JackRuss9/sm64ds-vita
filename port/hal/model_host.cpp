@@ -134,9 +134,17 @@ short data_020a4bc0;
 short data_020a4bc4;
 
 /* processing-list heads the actor lifecycle links into */
-int data_020a4b78[4];
-int data_020a4b88[4];
-int data_020a4b98[4];
+/* The actor processing-list heads. src/runtime/actor/ActorBase.cpp owns
+   them once the actor gate links it; under GCC that definition and these
+   meet in one link, so here they are weak (MSVC never sees both). */
+#if !defined(_MSC_VER)
+#define SM64DS_HOST_WEAK __attribute__((weak))
+#else
+#define SM64DS_HOST_WEAK
+#endif
+SM64DS_HOST_WEAK int data_020a4b78[4];
+SM64DS_HOST_WEAK int data_020a4b88[4];
+SM64DS_HOST_WEAK int data_020a4b98[4];
 int data_02099f24[4];
 
 // ---- common model data array (BSS on the DS) ------------------------------

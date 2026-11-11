@@ -45,6 +45,18 @@ uint32_t rt_irq_disable();
 uint32_t rt_irq_enable();
 uint32_t rt_irq_restore(uint32_t prev);
 bool rt_irq_masked();
+// Called whenever the game unmasks interrupts (Enable, or a Restore that
+// clears the I bit): where the DS takes an IRQ that became pending while
+// masked. The full-game build delivers its ARM7 replies here.
+void rt_set_unmask_hook(void (*hook)());
+// Set the CPU's interrupt mask without the unmask hook: a DS thread switch
+// restoring the mask saved with the thread it resumes (on the DS the I bit is
+// part of each thread's CPSR).
+void rt_irq_set_masked(bool masked);
+// For a watchdog's report: whose turn the game/host handoff gives (0 host,
+// 1 game) and how far the host's frame loop is (0 waiting for its turn,
+// 1 running scanlines, 2 in the frame hook).
+void rt_debug_state(int *turn, int *host_stage);
 
 }  // namespace ntr
 

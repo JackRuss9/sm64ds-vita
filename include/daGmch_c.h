@@ -161,6 +161,15 @@ typedef char daGmch_c_size_must_be_0x3f4[sizeof(daGmch_c) == 0x3f4 ? 1 : -1];
    symbol through decl_common.h and carried no `extern` of its own, so a header
    is the declaration site this class already had.  A file-local `extern` would also be the one thing in
    this TU that langmode_audit counts as an unmodelled class. */
+/* C linkage, as include/decl_common.h declares it: a variable symbol is not
+ * mangled, so this is the same declaration on the DS, and g++ rejects the
+ * two spellings meeting in one TU. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern int _ZTV8daGmch_c[];
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* DAGMCH_C_H */

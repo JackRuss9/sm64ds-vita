@@ -44,9 +44,19 @@ int func_02053274(int *a, int *b)
     sq <<= 2;
     savedIME = *imeReg;
     *imeReg = 0;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The square-root unit runs when its operand is written through the
+       I/O layer; the pointer stores below reach host memory only, so the
+       unit never ran and the caller got the previous square root back --
+       the one-frame giant Goombas, Koopas and Marios (normalised bone and
+       camera vectors scaled by a stale length). One 64-bit store instead. */
+    *(volatile unsigned short *)0x40002b0 = 1;
+    *(volatile unsigned long long *)0x40002b8 = (unsigned long long)sq;
+#else
     *sqrtcnt = 1;
     sqrtParam[0] = (unsigned int)sq;
     sqrtParam[1] = (unsigned int)(sq >> 32);
+#endif
     *imeReg;
     *imeReg = savedIME;
     while (*sqrtcnt & 0x8000);
@@ -98,8 +108,13 @@ int func_020531a4(int a)
     savedIME = *imeReg;
     *imeReg = 0;
     *(volatile unsigned short *)0x40002b0 = 1;
+#if defined(SM64DS_PLATFORM_PC)
+    /* as in func_02053274: through the I/O layer, so the unit runs */
+    *(volatile unsigned long long *)0x40002b8 = (unsigned long long)(unsigned)a << 32;
+#else
     sqrtParam[0] = 0;
     sqrtParam[1] = a;
+#endif
     *imeReg;
     *imeReg = savedIME;
     return func_02052fdc();
@@ -170,17 +185,28 @@ void func_02053008(int n)
     if (n > 0) {
         savedIME = *imeReg;
         *imeReg = 0;
+#if defined(SM64DS_PLATFORM_PC)
+        /* as in func_02053274: through the I/O layer, so the unit runs */
+        *(volatile unsigned short *)0x40002b0 = 1;
+        *(volatile unsigned long long *)0x40002b8 = (unsigned long long)(unsigned)n << 32;
+#else
         *sqrtcnt = 1;
         sqrtParam[0] = 0;
         sqrtParam[1] = n;
+#endif
         *imeReg;
         *imeReg = savedIME;
     } else {
         savedIME = *imeReg;
         *imeReg = 0;
+#if defined(SM64DS_PLATFORM_PC)
+        *(volatile unsigned short *)0x40002b0 = 1;
+        *(volatile unsigned long long *)0x40002b8 = 0;
+#else
         *sqrtcnt = 1;
         sqrtParam[0] = 0;
         sqrtParam[1] = 0;
+#endif
         *imeReg;
         *imeReg = savedIME;
     }

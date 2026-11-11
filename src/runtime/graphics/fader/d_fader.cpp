@@ -49,7 +49,7 @@ void Matrix4x3_ApplyInPlaceToRotationX(Matrix4x3 *m, short ang);
 }
 extern Matrix4x3 data_020a0e68;
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN8dFader_cD0Ev
 // @symbol _ZN8dFader_cD1Ev
 // @symbol _ZN8dFader_cD2Ev
@@ -163,7 +163,7 @@ void dFader_c::AdvanceInterp()
     ApproachLinear(currInterp, target, step);
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN10dFdColor_cD0Ev
 // @symbol _ZN10dFdColor_cD1Ev
 // @symbol _ZN10dFdColor_cD2Ev

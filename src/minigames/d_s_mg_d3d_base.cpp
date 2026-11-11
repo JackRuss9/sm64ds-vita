@@ -196,6 +196,11 @@ int dScMgD3DBase_c::InitSubScreenBg()
     }
     LoadCompressedFileAt(0x5b, (void*)G2S::GetBG1ScrPtr());
     GX::SetBankForSubBG(mSubBgBank);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN14dScMgD3DBase_c11InitEnginesEv
@@ -367,6 +372,11 @@ int dScMgD3DBase_c::GetDisplayMode()
 extern "C" int D3D_PlaySeAtX(int a, int b)
 {
     func_02012718(a, b + 0x80000);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol Sound_PlayBank1Panned

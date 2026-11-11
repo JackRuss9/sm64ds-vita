@@ -47,6 +47,7 @@
  * - func_02044534's z-prefixed zero temps and the two/three constants keep the
  *   ROM's register schedule; the compact human form does not emit them.
  */
+#include "gx_port_write.h"
 #include "dExtModel_c.h"
 #include "types.h"
 #include "nitro/fx/fx.h"
@@ -188,6 +189,13 @@ void func_020453c0(int *self, short *node, int *p2, int p3)
         anim = (int*)f2c;
         frame = *(unsigned short*)(elem + 0x30);
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* No animation file (a player model asked to animate before its file
+       arrived, in Bob-omb Battlefield): the DS reads the bone table through
+       address 0x14 -- harmless memory there, a fault here. The pose stays. */
+    if (anim == 0)
+        return;
+#endif
     int mla = idx * 0x24 + anim[5];
     unsigned short *dst;
     func_0204547c(anim, mla, frame, elem);
@@ -545,16 +553,16 @@ void func_0204488c(char* self, int index, int* color)
                 int c2 = color[2];
                 int c1 = color[1];
                 int c0 = color[0];
-                *mtxScale = c0;
-                *mtxScale = c1;
-                *mtxScale = c2;
+                GX_PORT_WRITE(mtxScale, c0);
+                GX_PORT_WRITE(mtxScale, c1);
+                GX_PORT_WRITE(mtxScale, c2);
             }
             func_02055388(partMtx);
             {
                 int white = data_020a4bd4;
-                *mtxScale = white;
-                *mtxScale = white;
-                *mtxScale = white;
+                GX_PORT_WRITE(mtxScale, white);
+                GX_PORT_WRITE(mtxScale, white);
+                GX_PORT_WRITE(mtxScale, white);
             }
             *(volatile int*)0x400044c = j;
         }

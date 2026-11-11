@@ -116,6 +116,15 @@ typedef char Scuttlebug_size_must_be_0x3ac[sizeof(Scuttlebug) == 0x3ac ? 1 : -1]
  * emits _ZTV10Scuttlebug and the manifest externalizes it: RTTI off leaves a
  * zero typeinfo word where retail has _ZTI7daSpd_c. This declaration is the
  * public address point. */
+/* C linkage, as include/decl_common.h declares it: a variable symbol is not
+ * mangled, so this is the same declaration on the DS, and g++ rejects the
+ * two spellings meeting in one TU. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern int _ZTV10Scuttlebug[];
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SCUTTLEBUG_H */

@@ -63,8 +63,16 @@ int myFS_OpenFileDirect(char *p_file, struct FSArchive *p_arc, u32 image_top, u3
     return r;
 }
 
+#if defined(SM64DS_PLATFORM_PC)
+/* Host: the FSFileID arrives by value, as the callers pass it (r1, r2). The
+   DS spelling reads it through &b, which needs b and c side by side in the
+   frame -- mwccarm's layout, not GCC's. */
+int myFS_OpenFileFast(int a, struct BC bc) {
+    int r = func_0205d568(a, bc);
+#else
 int myFS_OpenFileFast(int a, int b, int c, ...) {
     int r = func_0205d568(a, *(struct BC *)&b);
+#endif
     if (r == 0) {
         func_02018e68(&data_0208ec74);
         Crash();

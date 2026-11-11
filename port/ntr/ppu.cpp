@@ -285,4 +285,48 @@ bool ppu_write_bmp(const char *path, const Framebuffer &fb) {
     return true;
 }
 
+void ppu_master_brightness(Engine eng, Framebuffer &fb) {
+    ppu_apply_master_brightness(rd16(eng == ENGINE_A ? 0x0400006Cu : 0x0400106Cu), fb);
+}
+
+void ppu_apply_master_brightness(uint16_t mb, Framebuffer &fb) {
+    const unsigned mode = (mb >> 14) & 3;
+    unsigned f = mb & 0x1f;
+    if (f > 16) f = 16;
+    if ((mode != 1 && mode != 2) || f == 0) return;
+    for (int y = 0; y < SCREEN_H; ++y)
+        for (int x = 0; x < SCREEN_W; ++x) {
+            const uint32_t c = fb.px[y][x];
+            uint32_t out = c & 0xFF000000u;
+            for (int sh = 0; sh < 24; sh += 8) {
+                const uint32_t v = (c >> sh) & 0xFF;
+                const uint32_t n = mode == 1 ? v + (255 - v) * f / 16 : v - v * f / 16;
+                out |= n << sh;
+            }
+            fb.px[y][x] = out;
+        }
+}
+
+void ppu_bg_brightness_effect(Engine eng, Framebuffer &fb) {
+    const uint32_t base = eng == ENGINE_A ? 0x04000000u : 0x04001000u;
+    const uint16_t bldcnt = rd16(base + 0x50);
+    const unsigned mode = (bldcnt >> 6) & 3;
+    if (mode != 2 && mode != 3) return;
+    unsigned f = rd16(base + 0x54) & 0x1f;
+    if (f > 16) f = 16;
+    if (f == 0) return;
+    const uint32_t enabled_bg = (rd32(base) >> 8) & 0x0f;
+    if ((bldcnt & enabled_bg) != enabled_bg) return;
+    for (int y = 0; y < SCREEN_H; ++y)
+        for (int x = 0; x < SCREEN_W; ++x) {
+            const uint32_t c = fb.px[y][x];
+            uint32_t out = c & 0xFF000000u;
+            for (int sh = 0; sh < 24; sh += 8) {
+                const uint32_t v = (c >> sh) & 0xFF;
+                out |= (mode == 2 ? v + (255 - v) * f / 16 : v - v * f / 16) << sh;
+            }
+            fb.px[y][x] = out;
+        }
+}
+
 }  // namespace ntr

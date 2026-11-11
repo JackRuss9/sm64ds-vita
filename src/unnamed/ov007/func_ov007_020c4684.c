@@ -1,3 +1,4 @@
+#include "gx_port_write.h"
 #include "types.h"
 #include "Ov007Sprite.h"
 #include "Ov007Texture.h"
@@ -118,7 +119,7 @@ void func_ov007_020c4684(Ov007Sprite *s, int color, int alpha, int polygonId, in
         }
         new_var = (volatile int *)0x04000488;
         x1 = (u16)(((s32)((((tw << 12) * us) + xl) << 8)) >> 16);
-        *new_var = x1 | (y1 << 16);
+        GX_PORT_WRITE(new_var, x1 | (y1 << 16));
         *((volatile int *)0x04000498) = 0x1000;
         if (use_col) {
             *((volatile int *)0x04000480) = s->cornerColors[3];

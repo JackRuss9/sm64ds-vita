@@ -6020,6 +6020,11 @@ int dScMgSmartball_c::InitSubScreenBg() {
     f = GetGameLanguage();
     LoadCompressedFileAt(sSmartballOptionNcgByLanguage[f], (void *)G2S::GetBG1CharPtr());
     LoadCompressedFileAt(ASSET_D_2D_MG_BG_OPTION_NSC_BIN, G2S::GetBG1ScrPtr());
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN16dScMgSmartball_c13InitResourcesEv

@@ -83,7 +83,9 @@ int main(void)
 
     /* upload: the words must land in mapped OAM at 0x07000000 */
     _ZN3OAM4LoadEv();
-    const u32 *oam = (const u32 *)0x07000000;
+    /* DS addresses through ntr::host_ptr: identity where the regions are
+       mapped at their real addresses, the relocated block on the PS Vita */
+    const u32 *oam = ntr::host_ptr_t<const u32>(0x07000000);
     printf("  oam[3..7]: %08x %08x %08x %08x %08x\n",
            oam[3], oam[4], oam[5], oam[6], oam[7]);
     printf("  oam[0..2]: %08x %08x %08x\n", oam[0], oam[1], oam[2]);
@@ -102,9 +104,9 @@ int main(void)
        tiles of solid color-index 1; palette 2 entry 1 = pure red. */
     {
         volatile unsigned char *tiles =
-            (volatile unsigned char *)(0x06400000u + 5u * 32u);
+            ntr::host_ptr_t<volatile unsigned char>(0x06400000u + 5u * 32u);
         for (int i = 0; i < 4 * 32; ++i) tiles[i] = 0x11;
-        *(volatile u16 *)(0x05000200u + (2u * 16u + 1u) * 2u) = 0x001F; /* red */
+        *ntr::host_ptr_t<volatile u16>(0x05000200u + (2u * 16u + 1u) * 2u) = 0x001F; /* red */
         NTR_MMIO(u32, 0x04000000) = (1u << 4);   /* DISPCNT: OBJ 1D mapping */
 
         ntr::Framebuffer fb;
@@ -124,7 +126,11 @@ int main(void)
                 if (fb.px[y][x] != 0xFF101820u) ++rotated_px;
         printf("  rotated sprite pixels: %d\n", rotated_px);
         CHECK(rotated_px > 100);      /* the affine sprite drew a real footprint */
+#if defined(SM64DS_OUT_DIR)
+        ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_oam.bmp", fb);
+#else
         ntr::ppu_write_bmp("smoke_oam.bmp", fb);
+#endif
     }
 
     if (g_failures) {

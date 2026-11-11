@@ -974,9 +974,18 @@ int daDemo_c::func_ov002_020f26c4(unsigned char *src)
  * ldr ip, [pc]; bx ip; .word 0x20f2630
  */
 extern "C" {  /* .c-derived member: C linkage for the whole block */
+#if defined(SM64DS_PLATFORM_PC)
+/* Host: a veneer passes its caller's registers on untouched; spelled with no
+   argument, GCC inlined the target with `self` undefined (it used 0, and the
+   script's call faulted on its first store). Forward the argument. */
+int func_ov002_020f26d4(daDemo_c *self) {
+    return func_ov002_020f2630(self);
+}
+#else
 void func_ov002_020f26d4(void) {
     ((void (*)(void))func_ov002_020f2630)();
 }
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1114,6 +1123,11 @@ int func_ov002_020f2990(char* c)
     else if (GetOwnerLanguage() == 4) idx = 3;
 
     OAM::Render(0, data_ov002_0210b988[idx], x, y, -1, 1, 0x1000, 0x1000, 0, -1);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 }
 

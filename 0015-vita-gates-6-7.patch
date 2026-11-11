@@ -1,0 +1,105 @@
+diff --git a/port/tests/smoke_modelanim.cpp b/port/tests/smoke_modelanim.cpp
+index 5f17f8c..575ba4b 100644
+--- a/port/tests/smoke_modelanim.cpp
++++ b/port/tests/smoke_modelanim.cpp
+@@ -28,8 +28,6 @@ void *_ZN14dExtAnmModel_cC1Ev(void *self);
+ struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
+ SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(SharedFilePtrC *self, u32 ov0FileID);
+ void *_ZN5mHeap6Heap_t13SetupRootHeapEv(void);
+-void _ZN14dExtAnmModel_c7SetAnimEP8BCA_Filei5Fix12IiEj(void *self, void *bca,
+-                                                 int flags, int speed, u16 start);
+ extern Matrix4x3 data_0209b3ec;
+ }
+ 
+@@ -113,7 +111,11 @@ int main(void)
+     CHECK(bca != NULL);
+ 
+     /* the game's install: loop mode (flags 0), speed 1.0 (fx12), frame 0 */
+-    _ZN14dExtAnmModel_c7SetAnimEP8BCA_Filei5Fix12IiEj(g_ma, bca, 0, 0x1000, 0);
++    /* the real member (include/dExtAnmModel_c.h; ROM symbol
++       _ZN14dExtAnmModel_c7SetAnimEP8BCA_Fileiit), called qualified like the
++       rest of this file -- not the stale hand-mangled Fix12<int>/unsigned-int
++       spelling, which no definition answers any more */
++    g_ma->dExtAnmModel_c::SetAnim((BCA_File *)bca, 0, 0x1000, 0);
+     CHECK(g_ma->currFrame == 0);
+     CHECK((g_ma->numFramesAndFlags & ~0xc0000000) == (NUM_FRAMES << 12));
+ 
+diff --git a/port/tests/smoke_oam.cpp b/port/tests/smoke_oam.cpp
+index 6009d81..32ca96e 100644
+--- a/port/tests/smoke_oam.cpp
++++ b/port/tests/smoke_oam.cpp
+@@ -83,7 +83,9 @@ int main(void)
+ 
+     /* upload: the words must land in mapped OAM at 0x07000000 */
+     _ZN3OAM4LoadEv();
+-    const u32 *oam = (const u32 *)0x07000000;
++    /* DS addresses through ntr::host_ptr: identity where the regions are
++       mapped at their real addresses, the relocated block on the PS Vita */
++    const u32 *oam = ntr::host_ptr_t<const u32>(0x07000000);
+     printf("  oam[3..7]: %08x %08x %08x %08x %08x\n",
+            oam[3], oam[4], oam[5], oam[6], oam[7]);
+     printf("  oam[0..2]: %08x %08x %08x\n", oam[0], oam[1], oam[2]);
+@@ -102,9 +104,9 @@ int main(void)
+        tiles of solid color-index 1; palette 2 entry 1 = pure red. */
+     {
+         volatile unsigned char *tiles =
+-            (volatile unsigned char *)(0x06400000u + 5u * 32u);
++            ntr::host_ptr_t<volatile unsigned char>(0x06400000u + 5u * 32u);
+         for (int i = 0; i < 4 * 32; ++i) tiles[i] = 0x11;
+-        *(volatile u16 *)(0x05000200u + (2u * 16u + 1u) * 2u) = 0x001F; /* red */
++        *ntr::host_ptr_t<volatile u16>(0x05000200u + (2u * 16u + 1u) * 2u) = 0x001F; /* red */
+         NTR_MMIO(u32, 0x04000000) = (1u << 4);   /* DISPCNT: OBJ 1D mapping */
+ 
+         ntr::Framebuffer fb;
+@@ -124,7 +126,11 @@ int main(void)
+                 if (fb.px[y][x] != 0xFF101820u) ++rotated_px;
+         printf("  rotated sprite pixels: %d\n", rotated_px);
+         CHECK(rotated_px > 100);      /* the affine sprite drew a real footprint */
++#if defined(SM64DS_OUT_DIR)
++        ntr::ppu_write_bmp(SM64DS_OUT_DIR "/smoke_oam.bmp", fb);
++#else
+         ntr::ppu_write_bmp("smoke_oam.bmp", fb);
++#endif
+     }
+ 
+     if (g_failures) {
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index d58d650..f434c16 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -367,3 +367,35 @@ sm64ds_vita_gate(gate5b SMDS00010 "SM64DS Gate 5b" tests/smoke_soak_anim.cpp
+             SM64DS_TEST_MAIN_ARGS)
+ target_sources(gate5b PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+ target_link_libraries(gate5b PRIVATE ntr)
++
++# Gate 6: the 2D sprite engine (OAM emit, affine params, upload to the
++# relocated OAM, and the OBJ scan-out). Writes ux0:data/sm64ds/smoke_oam.bmp.
++# Not linked on the Vita: hal/oam_bridge.cpp, hal/anim_bridge.cpp and
++# hal/anim_ctor_bridge.cpp are MSVC-only forwarders from C spellings to the
++# C++ methods; under GCC those spellings ARE the methods.
++sm64ds_vita_hostgen(GATE6_GEN _ZN3OAM4LoadEv)
++sm64ds_vita_gate(gate6 SMDS00011 "SM64DS Gate 6" tests/smoke_oam.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt slice_gate6.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC} ${GATE6_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate6 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} ${GATE6_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate6 PRIVATE ntr)
++
++# Gate 7: dExtAnmModel_c -- the game itself advances the animation (speed,
++# loop wrap) frame by frame on the game thread.
++sm64ds_vita_gate(gate7 SMDS00012 "SM64DS Gate 7" tests/smoke_modelanim.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt slice_gate7.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC}
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds"
++            SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
++target_sources(gate7 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate7 PRIVATE ntr)

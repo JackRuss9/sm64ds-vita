@@ -102,7 +102,7 @@ endif()
 # The ntr platform layer: imported host DS hardware (see ntr/README.md).
 # Compiled as its own lib so every gate binary can link the pieces it needs.
 add_library(ntr STATIC
-    ntr/io.cpp ntr/gx.cpp ntr/texture.cpp ntr/ppu.cpp ntr/lz77.cpp
+    ntr/io.cpp ntr/gx.cpp ntr/texture.cpp ntr/ppu.cpp ntr/ppu_compose.cpp ntr/lz77.cpp ntr/vram.cpp
     ntr/rt.cpp ntr/runtime.cpp ntr/fs.cpp ntr/bmd.cpp)
 target_include_directories(ntr PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/ntr/include")
 if(MSVC)

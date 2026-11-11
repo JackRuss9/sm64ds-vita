@@ -50,6 +50,15 @@ int func_0205d688(char *self, int dst, int len, int async) {
             n = avail;
         }
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* Host: a DS destination (VRAM, the palette: LoadFileAt(id, 0x5000000))
+       read into the host's copy of it; host pointers pass through. */
+    {
+        extern void *ntr_host_ptr(unsigned int ds_address);
+        if ((unsigned int)dst - 0x02000000u < 0x06000000u)
+            dst = (int)ntr_host_ptr((unsigned int)dst);
+    }
+#endif
     p_file->arg.readfile.dst = (void *)dst;
     if (n < 0) {
         n = 0;

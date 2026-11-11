@@ -28,8 +28,6 @@ void *_ZN14dExtAnmModel_cC1Ev(void *self);
 struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
 SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(SharedFilePtrC *self, u32 ov0FileID);
 void *_ZN5mHeap6Heap_t13SetupRootHeapEv(void);
-void _ZN14dExtAnmModel_c7SetAnimEP8BCA_Filei5Fix12IiEj(void *self, void *bca,
-                                                 int flags, int speed, u16 start);
 extern Matrix4x3 data_0209b3ec;
 }
 
@@ -113,7 +111,11 @@ int main(void)
     CHECK(bca != NULL);
 
     /* the game's install: loop mode (flags 0), speed 1.0 (fx12), frame 0 */
-    _ZN14dExtAnmModel_c7SetAnimEP8BCA_Filei5Fix12IiEj(g_ma, bca, 0, 0x1000, 0);
+    /* the real member (include/dExtAnmModel_c.h; ROM symbol
+       _ZN14dExtAnmModel_c7SetAnimEP8BCA_Fileiit), called qualified like the
+       rest of this file -- not the stale hand-mangled Fix12<int>/unsigned-int
+       spelling, which no definition answers any more */
+    g_ma->dExtAnmModel_c::SetAnim((BCA_File *)bca, 0, 0x1000, 0);
     CHECK(g_ma->currFrame == 0);
     CHECK((g_ma->numFramesAndFlags & ~0xc0000000) == (NUM_FRAMES << 12));
 

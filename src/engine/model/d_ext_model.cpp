@@ -143,8 +143,19 @@ extern u8 data_0209ceec;
 /* The two shadow model files live in the shared overlay-0/1 region: arm9's own
  * symbols.txt rows for 0x020ad524/0x020ad560 sit past .bss and name nothing
  * the link defines, so the ov000 spelling is the resolvable one. */
+#if defined(SM64DS_PLATFORM_PC)
+/* Host: every overlay has its own storage, so the address has to name the
+ * one resident when these run -- overlay 1 (loaded at boot over overlay 0's
+ * range), whose data holds the two models with their pointers; overlay 0's
+ * bytes at that address are something else. */
+extern BMD_File data_ov001_020ad524;
+extern BMD_File data_ov001_020ad560;
+#define data_ov000_020ad524 data_ov001_020ad524
+#define data_ov000_020ad560 data_ov001_020ad560
+#else
 extern BMD_File data_ov000_020ad524;
 extern BMD_File data_ov000_020ad560;
+#endif
 /* local extern: no header declares these; the shadow scale matrix and the two
    opacity passes RenderAll draws with */
 void func_0203c178(Matrix4x3 *m, Fix12i sx, Fix12i sy, Fix12i sz);

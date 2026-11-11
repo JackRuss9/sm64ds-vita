@@ -121,6 +121,11 @@ void daObjBk_Botaosi_c::OnKicked(dActor_c &other) {
 #pragma long_calls on
 int daObjBk_Botaosi_c::OnAttacked2(dActor_c &other) {
     HandleHit(&other);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 #pragma long_calls off
 

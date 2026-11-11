@@ -1,0 +1,4163 @@
+diff --git a/include/Scuttlebug.h b/include/Scuttlebug.h
+index daa78e4..d86d3b5 100644
+--- a/include/Scuttlebug.h
++++ b/include/Scuttlebug.h
+@@ -116,6 +116,15 @@ typedef char Scuttlebug_size_must_be_0x3ac[sizeof(Scuttlebug) == 0x3ac ? 1 : -1]
+  * emits _ZTV10Scuttlebug and the manifest externalizes it: RTTI off leaves a
+  * zero typeinfo word where retail has _ZTI7daSpd_c. This declaration is the
+  * public address point. */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV10Scuttlebug[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #endif /* SCUTTLEBUG_H */
+diff --git a/include/daBombking_c.h b/include/daBombking_c.h
+index e185243..b98d573 100644
+--- a/include/daBombking_c.h
++++ b/include/daBombking_c.h
+@@ -165,7 +165,10 @@ struct daBombking_c : dEnemyBase_c {
+ /* ~daBombking_c, the key function, owns the compiler-emitted definition of this
+  * vtable. The factory is `return new daBombking_c()`, which calls the
+  * inherited fBase_c::operator new (`_ZN7fBase_cnwEm`). */
+-extern int _ZTV12daBombking_c[];
++/* C linkage, as include/decl_common.h declares it: a variable's symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the two
++ * spellings meeting in one TU. */
++extern "C" int _ZTV12daBombking_c[];
+ 
+ #ifndef SM64DS_PLATFORM_PC
+ /* ROM layout under mwccarm; host ABI divergence is tracked separately. */
+diff --git a/include/daGmch_c.h b/include/daGmch_c.h
+index 767c30f..65050c2 100644
+--- a/include/daGmch_c.h
++++ b/include/daGmch_c.h
+@@ -161,6 +161,15 @@ typedef char daGmch_c_size_must_be_0x3f4[sizeof(daGmch_c) == 0x3f4 ? 1 : -1];
+    symbol through decl_common.h and carried no `extern` of its own, so a header
+    is the declaration site this class already had.  A file-local `extern` would also be the one thing in
+    this TU that langmode_audit counts as an unmodelled class. */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV8daGmch_c[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #endif /* DAGMCH_C_H */
+diff --git a/include/daMip_c.h b/include/daMip_c.h
+index e654b83..4bda4f7 100644
+--- a/include/daMip_c.h
++++ b/include/daMip_c.h
+@@ -172,6 +172,15 @@ typedef char daMip_c_size_must_be_0x474[sizeof(daMip_c) == 0x474 ? 1 : -1];
+ /* ~daMip_c, the key function, owns the compiler-emitted definition of this
+  * vtable. The factory is `return new daMip_c()`, which calls the inherited
+  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV7daMip_c[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #endif /* DAMIP_C_H */
+diff --git a/include/daPropeller_Heyho_c.h b/include/daPropeller_Heyho_c.h
+index 16dd507..1cb600f 100644
+--- a/include/daPropeller_Heyho_c.h
++++ b/include/daPropeller_Heyho_c.h
+@@ -130,7 +130,16 @@ struct daPropeller_Heyho_c : dEnemyBase_c {
+  * out-of-line virtual, so this TU emits the vtable. The factory is
+  * `return new daPropeller_Heyho_c()`, which calls the inherited
+  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV19daPropeller_Heyho_c[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #ifndef SM64DS_PLATFORM_PC
+ /* ROM layout under mwccarm; host ABI divergence is tracked separately. */
+diff --git a/include/daSanbo_c.h b/include/daSanbo_c.h
+index 14affc4..0ae32ed 100644
+--- a/include/daSanbo_c.h
++++ b/include/daSanbo_c.h
+@@ -127,7 +127,16 @@ struct daSanbo_c : dActor_c {
+ /* Inline destructor is the key function, so this TU emits the vtable. Both
+  * factories are `return new daSanbo_c()`, which calls the inherited
+  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV9daSanbo_c[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #ifndef SM64DS_PLATFORM_PC
+ /* ROM layout under mwccarm; host ABI divergence is tracked separately. */
+diff --git a/include/daYurei_Mucho_c.h b/include/daYurei_Mucho_c.h
+index e0d4929..d18e4f0 100644
+--- a/include/daYurei_Mucho_c.h
++++ b/include/daYurei_Mucho_c.h
+@@ -85,7 +85,16 @@ struct daYurei_Mucho_c : dEnemyBase_c {
+ /* Inline destructor is the key function, so this TU emits the vtable. The
+  * factory is `return new daYurei_Mucho_c()`, which calls the inherited
+  * fBase_c::operator new (`_ZN7fBase_cnwEm`). */
++/* C linkage, as include/decl_common.h declares it: a variable symbol is not
++ * mangled, so this is the same declaration on the DS, and g++ rejects the
++ * two spellings meeting in one TU. */
++#ifdef __cplusplus
++extern "C" {
++#endif
+ extern int _ZTV15daYurei_Mucho_c[];
++#ifdef __cplusplus
++}
++#endif
+ 
+ #ifndef SM64DS_PLATFORM_PC
+ /* ROM layout under mwccarm; host ABI divergence is tracked separately. */
+diff --git a/include/nitro/os/spinLock.h b/include/nitro/os/spinLock.h
+index f6b859f..8c8c387 100644
+--- a/include/nitro/os/spinLock.h
++++ b/include/nitro/os/spinLock.h
+@@ -17,11 +17,21 @@
+ 
+ #include "types.h"
+ 
++#if defined(__cplusplus) && defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)
++/* g++ will not let a cv-qualified typedef reuse its own struct tag; the host
++   C++ build names the tag apart. Same type, same layout. */
++typedef volatile struct OSLockWord_ {
++    u32 lockFlag;
++    u16 ownerID;
++    u16 extension;
++} OSLockWord;
++#else
+ typedef volatile struct OSLockWord {
+     u32 lockFlag;
+     u16 ownerID;
+     u16 extension;
+ } OSLockWord;
++#endif
+ 
+ /* Main-memory lock words, at the top of the shared work area. */
+ #define HW_LOCK_ID_FLAG_MAIN 0x027fffb0 /* two u32 masks of free ARM9 lock IDs */
+diff --git a/port/hal/fs.cpp b/port/hal/fs.cpp
+index 39c4946..5074b64 100644
+--- a/port/hal/fs.cpp
++++ b/port/hal/fs.cpp
+@@ -278,7 +278,9 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
+     return dst;
+ }
+ 
+-/* Construct: host ABI spells out both args (see header comment) */
++/* Construct: host ABI spells out both args (see header comment). The
++   full-game build takes src/SharedFilePtr.cpp's own (SM64DS_PORT_FULL). */
++#if !defined(SM64DS_PORT_FULL)
+ void func_02017e0c(void *self, u32 arg); /* portable src/ */
+ struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
+         struct SharedFilePtrC *self, u32 ov0FileID)
+@@ -286,6 +288,7 @@ struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
+     func_02017e0c(self, ov0FileID);
+     return self;
+ }
++#endif
+ } /* extern "C" */
+ 
+ /* The seam above is spelled as a C function because that is how src/ reached it
+diff --git a/port/hal/heap_globals.cpp b/port/hal/heap_globals.cpp
+index 3c74324..642ab88 100644
+--- a/port/hal/heap_globals.cpp
++++ b/port/hal/heap_globals.cpp
+@@ -196,6 +196,11 @@ extern "C" MemoryNode::Target *_ZN10MemoryNode6TargetC1EPS_(
+ // accepts -- so the slice can no longer compile the src/ definition. The body
+ // is the one src/cstd4.cpp carries.
+ namespace cstd {
++/* Weak off MSVC: the full-game GCC build compiles src/cstd4.cpp (its asm
++   dropped), whose own cstd::abs then takes over. */
++#if !defined(_MSC_VER)
++__attribute__((weak))
++#endif
+ int abs(int x)
+ {
+     return x < 0 ? -x : x;
+diff --git a/port/hal/romfs.cpp b/port/hal/romfs.cpp
+index 0f6ebde..79410fe 100644
+--- a/port/hal/romfs.cpp
++++ b/port/hal/romfs.cpp
+@@ -261,6 +261,56 @@ bool open(const char *rom_path,
+     return ok;
+ }
+ 
++uint8_t *read_overlay(const char *rom_path, unsigned ov_id, uint32_t *ram_base, size_t *len) {
++    FILE *f = fopen(rom_path, "rb");
++    if (!f) {
++        fprintf(stderr, "romfs: fopen(%s) failed, errno %d (%s)\n",
++                rom_path, errno, strerror(errno));
++        return nullptr;
++    }
++    uint8_t *out = nullptr;
++    uint8_t hdr[0x60], ent[0x20], fat[8];
++    do {
++        if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) break;
++        const uint32_t ovt_off = rd32(hdr + HDR_OVT9_OFF), ovt_size = rd32(hdr + HDR_OVT9_SIZE);
++        const uint32_t fat_off = rd32(hdr + HDR_FAT_OFF), fat_size = rd32(hdr + HDR_FAT_SIZE);
++        if ((ov_id + 1) * 0x20u > ovt_size) {
++            fprintf(stderr, "romfs: overlay %u is not in the OVT\n", ov_id);
++            break;
++        }
++        // GBATEK OVT record: id, ram address, ram size, bss size, sinit start,
++        // sinit end, file id, then compressed size (24 bits) | flags << 24.
++        if (fseek(f, (long)(ovt_off + ov_id * 0x20u), SEEK_SET) != 0 ||
++            fread(ent, 1, sizeof ent, f) != sizeof ent) break;
++        const uint32_t ram = rd32(ent + 4), ram_size = rd32(ent + 8);
++        const uint32_t file_id = rd32(ent + 0x18), word = rd32(ent + 0x1C);
++        if ((file_id + 1) * 8u > fat_size ||
++            fseek(f, (long)(fat_off + file_id * 8u), SEEK_SET) != 0 ||
++            fread(fat, 1, 8, f) != 8) break;
++        const uint32_t start = rd32(fat), end = rd32(fat + 4);
++        if (end < start || end - start >= (16u << 20)) break;
++        uint32_t size = end - start;
++        uint8_t *raw = (uint8_t *)malloc(size ? size : 1);
++        if (!raw) break;
++        if (fseek(f, (long)start, SEEK_SET) != 0 || fread(raw, 1, size, f) != size) {
++            free(raw); break;
++        }
++        if ((word >> 24) & 1) {          // BLZ-compressed, stream bounded by the OVT
++            const uint32_t comp = word & 0xFFFFFF;
++            out = blz_decompress(raw, comp && comp <= size ? comp : size, len);
++            free(raw);
++        } else {
++            out = raw;
++            *len = size;
++        }
++        if (out && *len > ram_size && ram_size) *len = ram_size;
++        if (out) *ram_base = ram;
++    } while (0);
++    if (!out) fprintf(stderr, "romfs: could not read overlay %u from %s\n", ov_id, rom_path);
++    fclose(f);
++    return out;
++}
++
+ uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len) {
+     // Each failure says which step failed: "could not read the ARM9" alone
+     // cannot tell a missing file from a short read or a full heap.
+diff --git a/port/hal/romfs.h b/port/hal/romfs.h
+index 0aa5c4a..9dd7f56 100644
+--- a/port/hal/romfs.h
++++ b/port/hal/romfs.h
+@@ -36,6 +36,12 @@ uint8_t *read_file(unsigned file_id, size_t *size);
+ // its own, so it works before (and independently of) open().
+ uint8_t *read_arm9(const char *rom_path, uint32_t *ram_base, size_t *len);
+ 
++// ARM9 overlay `ov_id` from `rom_path` as it sits in RAM once loaded:
++// decompressed, malloc'd (caller frees), *ram_base its load address, *len its
++// initialized size (the OVT's bss follows in RAM and is not part of this).
++// Opens the ROM on its own, like read_arm9. nullptr if the id or image is bad.
++uint8_t *read_overlay(const char *rom_path, unsigned ov_id, uint32_t *ram_base, size_t *len);
++
+ // Nintendo's backward LZ ("BLZ"), the ARM9/overlay code compression. `src` is
+ // the whole compressed file (footer included); returns the decompressed image,
+ // malloc'd, or nullptr if the footer is inconsistent. Exposed for tests.
+diff --git a/port/hal/romimage_rt.cpp b/port/hal/romimage_rt.cpp
+new file mode 100644
+index 0000000..b14453d
+--- /dev/null
++++ b/port/hal/romimage_rt.cpp
+@@ -0,0 +1,107 @@
++// Startup fill of the game's ROM-resident globals. See romimage_rt.h.
++#include "romimage_rt.h"
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "romfs.h"
++
++namespace {
++
++struct Image {
++    uint8_t *bytes = nullptr;
++    uint32_t base = 0;
++    size_t len = 0;
++};
++
++inline uint32_t rd32(const uint8_t *p) {
++    return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
++}
++
++// NitroSDK module params: the "21 06 C0 DE DE C0 06 21" magic closes them, and
++// the first three words are the autoload list, its end and the autoload data
++// start (all ARM9 RAM addresses). Each list entry is {address, size, bss}; the
++// blocks' bytes follow one another from the data start. ITCM and DTCM come in
++// this way.
++bool find_autoload(const Image &arm9, uint32_t want_lo, uint32_t want_hi, Image *out) {
++    static const uint8_t magic[8] = {0x21, 0x06, 0xC0, 0xDE, 0xDE, 0xC0, 0x06, 0x21};
++    const size_t scan = arm9.len < 0x8000 ? arm9.len : 0x8000;
++    for (size_t off = 0x1C; off + 8 <= scan; off += 4) {
++        if (memcmp(arm9.bytes + off, magic, 8) != 0) continue;
++        const uint8_t *params = arm9.bytes + off - 0x1C;
++        const uint32_t list = rd32(params), list_end = rd32(params + 4);
++        uint32_t data = rd32(params + 8);
++        if (list < arm9.base || list_end < list || list_end - arm9.base > arm9.len ||
++            (list_end - list) % 12)
++            return false;
++        for (uint32_t e = list; e < list_end; e += 12) {
++            const uint8_t *ent = arm9.bytes + (e - arm9.base);
++            const uint32_t addr = rd32(ent), size = rd32(ent + 4);
++            if (data < arm9.base || data - arm9.base + size > arm9.len) return false;
++            if (addr >= want_lo && addr < want_hi) {
++                out->bytes = arm9.bytes + (data - arm9.base);   // borrowed
++                out->base = addr;
++                out->len = size;
++                return true;
++            }
++            data += size;
++        }
++        return false;
++    }
++    return false;
++}
++
++}  // namespace
++
++extern "C" unsigned sm64ds_romimage_filled = 0, sm64ds_romimage_missing = 0;
++
++extern "C" bool sm64ds_romimage_load(const char *rom_path) {
++    Image arm9;
++    arm9.bytes = romfs::read_arm9(rom_path, &arm9.base, &arm9.len);
++    if (!arm9.bytes) {
++        fprintf(stderr, "romimage: could not read the ARM9\n");
++        return false;
++    }
++    Image itcm, dtcm;
++    const bool have_itcm = find_autoload(arm9, 0x01FF8000u, 0x02000000u, &itcm);
++    const bool have_dtcm = find_autoload(arm9, 0x023C0000u, 0x023C4000u, &dtcm);
++
++    const int MAX_OV = 256;
++    Image *ovs = (Image *)calloc(MAX_OV, sizeof(Image));
++    unsigned filled = 0, missing = 0;
++    for (unsigned i = 0; i < rim_fill_count; ++i) {
++        const RimFill &f = rim_fills[i];
++        Image *img = nullptr;
++        if (f.module == -1) img = &arm9;
++        else if (f.module == -2) img = have_itcm ? &itcm : nullptr;
++        else if (f.module == -3) img = have_dtcm ? &dtcm : nullptr;
++        else if (f.module >= 0 && f.module < MAX_OV) {
++            img = &ovs[f.module];
++            if (!img->bytes && img->base != 0xFFFFFFFFu) {
++                img->bytes = romfs::read_overlay(rom_path, (unsigned)f.module, &img->base, &img->len);
++                if (!img->bytes) img->base = 0xFFFFFFFFu;     // tried, failed
++            }
++            if (!img->bytes) img = nullptr;
++        }
++        if (!img || f.ds_addr < img->base || f.ds_addr - img->base + f.size > img->len) {
++            ++missing;
++            continue;
++        }
++        memcpy(f.dst, img->bytes + (f.ds_addr - img->base), f.size);
++        ++filled;
++    }
++    for (unsigned i = 0; i < rim_patch_count; ++i) {
++        const uint32_t v = (uint32_t)(uintptr_t)rim_patches[i].target;
++        memcpy(rim_patches[i].at, &v, 4);
++    }
++    sm64ds_romimage_filled = filled;
++    sm64ds_romimage_missing = missing;
++    printf("romimage: %u globals filled from the ROM, %u pointers patched", filled, rim_patch_count);
++    if (missing) printf(", %u outside their module image", missing);
++    printf("\n");
++    for (int i = 0; i < MAX_OV; ++i) free(ovs[i].bytes);
++    free(ovs);
++    free(arm9.bytes);
++    return true;
++}
+diff --git a/port/hal/romimage_rt.h b/port/hal/romimage_rt.h
+new file mode 100644
+index 0000000..c51940b
+--- /dev/null
++++ b/port/hal/romimage_rt.h
+@@ -0,0 +1,41 @@
++// The game's ROM-resident globals on host: fill + pointer patching at startup.
++//
++// port/tools/romimage.py emits storage for every game global that no C source
++// defines (tables, strings, pointer arrays the decomp still keeps as ROM
++// bytes), plus two tables:
++//
++//   rim_fills    which DS range of which module (ARM9, DTCM, overlay N) each
++//                storage holds;
++//   rim_patches  every DS pointer inside that data, as (where in host
++//                storage, host address of what it points to).
++//
++// sm64ds_romimage_load() reads the ARM9 and overlay images from the user's
++// own .nds, copies each fill's bytes, then writes every patch. The tables
++// carry no ROM bytes; the bytes never leave the user's dump.
++#ifndef SM64DS_PORT_ROMIMAGE_RT_H
++#define SM64DS_PORT_ROMIMAGE_RT_H
++
++#include <stdint.h>
++
++/* module: -1 ARM9 main, -2 ITCM, -3 DTCM, >= 0 overlay id */
++struct RimFill {
++    int module;
++    uint32_t ds_addr;
++    uint32_t size;
++    unsigned char *dst;
++};
++struct RimPatch {
++    unsigned char *at;          /* 32-bit slot in host storage */
++    const void *target;         /* host address the DS pointer meant */
++};
++
++extern const RimFill rim_fills[];
++extern const unsigned rim_fill_count;
++extern const RimPatch rim_patches[];
++extern const unsigned rim_patch_count;
++
++/* Fill and patch everything; false (with a message on stderr) if the ROM
++   cannot be read. */
++extern "C" bool sm64ds_romimage_load(const char *rom_path);
++
++#endif
+diff --git a/port/ntr/include/ntr/mmio.h b/port/ntr/include/ntr/mmio.h
+index e997b21..beb7f1a 100644
+--- a/port/ntr/include/ntr/mmio.h
++++ b/port/ntr/include/ntr/mmio.h
+@@ -86,6 +86,16 @@ struct Reg {
+     Reg &operator|=(T v) { return *this = static_cast<T>(static_cast<T>(*this) | v); }
+     Reg &operator&=(T v) { return *this = static_cast<T>(static_cast<T>(*this) & v); }
+     Reg &operator^=(T v) { return *this = static_cast<T>(static_cast<T>(*this) ^ v); }
++
++    // `&REG_IME`: game code that keeps a register's address in a plain
++    // `volatile T *` (PXI_InitFifo, the Luigi minigame's IME save) gets the
++    // register's backing word in the host IO block. Accesses through that
++    // pointer read and write the register's storage directly; they do not run
++    // io_write's side effects (the DIV/SQRT engines, IRQ acknowledge), which
++    // none of those sites relies on.
++    volatile T *operator&() const {
++        return reinterpret_cast<volatile T *>(host_ptr(addr));
++    }
+ };
+ 
+ }  // namespace ntr
+diff --git a/port/tools/hostexterns.py b/port/tools/hostexterns.py
+new file mode 100644
+index 0000000..d715701
+--- /dev/null
++++ b/port/tools/hostexterns.py
+@@ -0,0 +1,712 @@
++#!/usr/bin/env python3
++"""Host transform: block-scope `extern` redeclarations that disagree in type.
++
++mwccarm takes each block-scope `extern` declaration on its own terms, so the
++decomp's big TUs (Player.cpp declares a global as `u16` in one method and as
++`char[]` in the next) compile for the DS. GCC treats every block-scope extern
++of a name as the same entity across the translation unit and rejects the
++second type: "conflicting declaration". The source is byte-matched and must
++not change, so the port transforms its HOST COPY instead, as tools/hostgen.py
++does for MMIO:
++
++  each block-scope declaration whose type disagrees with an earlier one gets a
++  private C++ name bound to the SAME linker symbol through an asm label --
++      extern char data_0209f49c[];
++  becomes
++      extern char data_0209f49c__h2[] __asm__("data_0209f49c");
++  and the name is rewritten from there to the end of the enclosing block.
++
++Only data and extern "C" functions conflict this way (C++ functions overload
++instead), and both link by their plain name, so the asm label is exact.
++
++  hostexterns.py --check FILE...      print the files that need the transform
++  hostexterns.py IN OUT               write the transformed copy
++"""
++import collections
++import re
++import sys
++
++DECL = re.compile(r'^(\s*)extern\s+(?!"C")(.*?);\s*(//.*|/\*.*\*/\s*)?$')
++IDENT = re.compile(r'[A-Za-z_]\w*')
++KEYWORDS = {'const', 'volatile', 'unsigned', 'signed', 'struct', 'union', 'enum',
++            'int', 'char', 'short', 'long', 'void', 'float', 'double', 'bool'}
++
++
++def declared_name(body):
++    """The declarator name in `TYPE NAME[...]`, `TYPE NAME(...)`, `TYPE (*NAME)(...)`."""
++    b = re.sub(r'__attribute__\s*\(\(.*?\)\)', '', body)
++    b = b.split('=')[0]
++    # function pointer / pointer-to-array: (*NAME) or (&NAME)
++    m = re.search(r'\(\s*[*&]\s*(?:const\s+)?([A-Za-z_]\w*)\s*\)', b)
++    if m:
++        return m.group(1), m.start(1), m.end(1)
++    # the last identifier before the first '(' or '[' (or the end)
++    cut = len(b)
++    for ch in '([':
++        i = b.find(ch)
++        if i != -1:
++            cut = min(cut, i)
++    ids = [(mm.group(0), mm.start(), mm.end()) for mm in IDENT.finditer(b[:cut])]
++    ids = [x for x in ids if x[0] not in KEYWORDS]
++    return ids[-1] if ids else None
++
++
++def normalize(body, name):
++    return re.sub(r'\s+', ' ', re.sub(r'\b%s\b' % re.escape(name), '@', body)).strip()
++
++
++def strip_code(line):
++    """The line with strings, chars and comments blanked (for brace counting).
++    Comments are handled before quotes, so the apostrophe in
++    `/* this TU's */` is prose, not a char literal. An unterminated `/*`
++    blanks the rest of the line (see unterminated_comment)."""
++    out, i, n = [], 0, len(line)
++    while i < n:
++        c = line[i]
++        if line.startswith('//', i):
++            break
++        if line.startswith('/*', i):
++            j = line.find('*/', i + 2)
++            if j == -1:
++                break
++            out.append(' ')
++            i = j + 2
++            continue
++        if c in '"\'':
++            q = c; out.append(' '); i += 1
++            while i < n and line[i] != q:
++                i += 2 if line[i] == '\\' else 1
++            i += 1
++            continue
++        out.append(c); i += 1
++    return ''.join(out)
++
++
++def unterminated_comment(line):
++    """True when the line opens a /* comment it does not close."""
++    i, n = 0, len(line)
++    while i < n:
++        if line.startswith('//', i):
++            return False
++        if line.startswith('/*', i):
++            j = line.find('*/', i + 2)
++            if j == -1:
++                return True
++            i = j + 2
++            continue
++        if line[i] in '"\'':
++            q = line[i]; i += 1
++            while i < n and line[i] != q:
++                i += 2 if line[i] == '\\' else 1
++            i += 1
++            continue
++        i += 1
++    return False
++
++
++BUILTIN_TYPES = {'u8', 'u16', 'u32', 'u64', 's8', 's16', 's32', 's64', 'Fix12i', 'size_t',
++                 'Vector3', 'Vector3_16', 'Matrix4x3', 'SharedFilePtr', 'dActor_c', 'fBase_c',
++                 'Player', 'BMD_File', 'KCL_File'}
++
++
++def header_names(include_dirs):
++    """Identifiers declared in the repo headers (rough: any word in them)."""
++    import os
++    names = set()
++    for d in include_dirs:
++        for root, _, files in os.walk(d):
++            for f in files:
++                if f.endswith('.h'):
++                    names.update(IDENT.findall(open(os.path.join(root, f), errors='replace').read()))
++    return names
++
++
++HEADER_NAMES = None
++
++
++FUNC_DEF = re.compile(r'^(?:\s*extern\s*"C"\s*)?(?!\s*(?:extern|return|typedef|if|while|for|switch|else|do)\b)'
++                      r'\s*[A-Za-z_][\w\s\*&<>,]*?(?<![:\w])([A-Za-z_]\w*)\s*\([^;]*$')
++# file-scope prototypes without `extern`, and `extern "C"` one-liners
++PROTO = re.compile(r'^(\s*)(?!(?:return|typedef|using|goto|delete|new|throw)\b)'
++                   r'((?:extern\s*"C"\s*)?[A-Za-z_][\w\s\*&<>,]*?[\s\*&]'
++                   r'(?<![:\w])[A-Za-z_]\w*\s*\([^;{}]*\)\s*(?:const\s*)?);\s*(//.*|/\*.*\*/\s*)?$')
++
++
++DATA_DEF = re.compile(r'^(?!\s*(?:extern|return|typedef|using|struct|class|union|enum|namespace|static_assert|template|goto|case|default|break|continue)\b)'
++                      r'\s*(?:static\s+|const\s+|volatile\s+)*[A-Za-z_][\w:<>]*(?:\s+[A-Za-z_][\w:<>]*)*[\s\*&]+'
++                      r'([A-Za-z_]\w*)\s*(?:\[[^\]]*\])*\s*(?:=[^;]*|\([^;]*\))?(?:;|\s*=\s*\{[^;]*$|\s*=\s*$)')
++
++
++def file_decl(line):
++    """(indent, body, name, start, end) for a file-scope declaration line:
++    `extern T x;`, `extern "C" T f(...);` or a bare prototype `T f(...);`."""
++    m = DECL.match(line)
++    if m:
++        nm = declared_name(m.group(2))
++        if not nm:
++            return None
++        k = len('extern ')          # spans are relative to the returned body
++        return (m.group(1), 'extern ' + m.group(2), (nm[0], nm[1] + k, nm[2] + k))
++    m = PROTO.match(line)
++    if m and FUNC_DEF.match(line.replace(";", " {")):
++        body = m.group(2)
++        nm = declared_name(re.sub(r'^extern\s*"C"\s*', '', body))
++        if nm:
++            off = len(body) - len(re.sub(r'^extern\s*"C"\s*', '', body))
++            return (m.group(1), body, (nm[0], nm[1] + off, nm[2] + off))
++    return None
++
++
++PARAM_RE = re.compile(r'^(?:(?:const|volatile|struct|union|enum|unsigned|signed)\s+)*'
++                      r'[A-Za-z_][\w:]*(?:<[^()]*>)?(?:\s+(?:const|volatile))?'
++                      r'(?:\s*[\*&]+\s*(?:const\s*)?|\s+)[A-Za-z_]?\w*\s*(?:\[\w*\])*$')
++CONTROL = {'if', 'while', 'for', 'switch', 'return', 'sizeof', 'else', 'do', 'case',
++           'goto', 'new', 'delete', 'throw', 'catch', 'operator', 'virtual'}
++
++
++def looks_like_params(p):
++    """True for a parameter-type list (`void *a, int`), false for call
++    arguments (`a, b`, `this->x + 1`): a local `Vector3 v(a, b);` is not a
++    prototype."""
++    p = p.strip()
++    if p in ('', 'void'):
++        return True
++    for part in p.split(','):
++        part = part.strip()
++        if part == '...':
++            continue
++        if part in KEYWORDS:
++            continue
++        if not PARAM_RE.match(part) or re.match(r'^this\b', part):
++            return False
++        if re.match(r'^[A-Za-z_]\w*$', part):     # a lone identifier: call arg
++            return False
++    return True
++
++
++def block_proto(line):
++    """(indent, body, (name, start, end)) for a block-scope prototype without
++    `extern` (`void f(void *p);` inside a function), else None."""
++    m = PROTO.match(line)
++    if not m or m.group(2).lstrip().startswith(('extern', 'virtual', 'static', 'inline', 'friend')):
++        return None
++    body = m.group(2)
++    inner = body[body.find('(') + 1:body.rfind(')')]
++    if not looks_like_params(inner):
++        return None
++    nm = declared_name(body)
++    if not nm or nm[0] in CONTROL or nm[0] in KEYWORDS:
++        return None
++    return (m.group(1), body, nm)
++
++
++def join_decls(lines):
++    """Join declarations split over several lines (`extern void f(int a,` /
++    `    int b);`) so each is one line for the matchers above."""
++    out, acc = [], None
++    for line in lines:
++        if acc is not None:
++            acc = acc.rstrip('\n') + ' ' + line.strip() + '\n'
++            sc = strip_code(acc)
++            if sc.count('(') <= sc.count(')') and ';' in sc:
++                out.append(acc); acc = None
++            elif len(acc) > 2000:
++                out.append(acc); acc = None
++            continue
++        sc = strip_code(line)
++        if re.match(r'^\s*extern\s+(?!"C"\s*\{)', sc) and sc.count('(') > sc.count(')') and ';' not in sc:
++            acc = line
++            continue
++        out.append(line)
++    if acc is not None:
++        out.append(acc)
++    return out
++
++
++def loosen(body, name_end):
++    """`int f(char *a, int b)` -> `int f(...)`: mwccarm converts between
++    unrelated pointer types at a call, g++ will not, and every renamed
++    declaration is a C-linkage alias of one symbol. AAPCS passes integer and
++    pointer arguments identically to a variadic callee, so the call is the
++    same -- except for floating-point arguments (VFP registers under the
++    hard-float ABI), whose declarations are left exact."""
++    rest = body[name_end:]
++    m = re.match(r'\s*\(', rest)
++    if not m:
++        return body                     # data, or a function pointer
++    depth, i = 0, m.end() - 1
++    for j in range(i, len(rest)):
++        if rest[j] == '(':
++            depth += 1
++        elif rest[j] == ')':
++            depth -= 1
++            if depth == 0:
++                params = rest[i + 1:j]
++                # floats travel in VFP registers; references and class
++                # objects cannot pass through `...` at all
++                if re.search(r'\b(float|double)\b', params) or '(' in params or '&' in params:
++                    return body
++                return body[:name_end] + rest[:i] + '(...)' + rest[j + 1:]
++    return body
++
++
++def _scan(lines):
++    """Brace-aware walk yielding (index, line, fn_depth, in_comment)."""
++    kinds = []
++    in_comment = False
++    last_code = ''
++    for idx, line in enumerate(lines):
++        if in_comment:
++            if '*/' in line:
++                in_comment = False
++            yield idx, line, None
++            continue
++        sc = strip_code(line)
++        prev_last = last_code
++        if sc.strip():
++            last_code = sc.strip()
++        if unterminated_comment(line):
++            in_comment = True
++        # fn_depth: function-body depth, or -1 directly inside a struct/class
++        # body (member declarations are never transformed)
++        fd = real = sum(1 for k in kinds if k == 'B')
++        if kinds and kinds[-1] == 'S':
++            fd = -1
++        _scan.real_depth = real
++        _scan.c_linkage = 'C' in kinds or bool(re.match(r'^\s*extern\s*"C"\s', line))
++        # innermost of namespace / extern "C": decides how a name is mangled
++        lk = [k for k in kinds if k in 'CN']
++        _scan.ns_depth = kinds.count('N')
++        _scan.in_ns_cxx = bool(lk) and lk[-1] == 'N' and not re.match(r'^\s*extern\s*"C"\s', line)
++        yield idx, line, fd
++        for i, ch in enumerate(sc):
++            if ch == '{':
++                head = sc[:i].rstrip()
++                # strip_code blanks the "C" of extern "C" {, leaving `extern  {`
++                if re.search(r'extern\s*$', head):
++                    kinds.append('C')
++                elif re.search(r'\bnamespace\b[\w\s:]*$', head) or \
++                        (not head and re.search(r'\bnamespace\b[\w\s:]*$', prev_last)):
++                    kinds.append('N')       # file scope, but C++ names get mangled
++                elif re.search(r'\b(struct|class|union|enum)\b[^;()]*$', head) or \
++                        (not head and re.search(r'\b(struct|class|union|enum)\b[^;()]*$', prev_last)):
++                    kinds.append('S')
++                else:
++                    kinds.append('B')
++            elif ch == '}':
++                if kinds:
++                    kinds.pop()
++
++
++def transform(lines, hdr=frozenset()):
++    """Make the TU's declarations of each global agree, as GCC requires.
++
++    * Every block-scope `extern` gets a private C++ name bound to the same
++      linker symbol (asm label), renamed to the end of its block.
++    * A file-scope `extern` that disagrees with another declaration or a
++      definition of the name in this TU is renamed the same way, from there
++      until the name's next file-scope declaration or definition.
++    * A name declared only at block scope (and in no header) gets one
++      file-scope declaration -- its first block-scope type -- ahead of the
++      top-level construct that first declares it, for uses mwccarm resolved
++      through an earlier block's declaration."""
++    lines = join_decls(lines)
++    # pass 1: what the TU defines / declares at file scope
++    defined, file_decl_body = set(), collections.defaultdict(set)
++    all_bodies = collections.defaultdict(set)
++    for idx, line, fd in _scan(lines):
++        if fd is not None and fd > 0:
++            m = DECL.match(line)
++            nm = declared_name(m.group(2)) if m else None
++            if nm:
++                all_bodies[nm[0]].add(normalize(m.group(2), nm[0]))
++        if fd != 0:
++            continue
++        fdcl = file_decl(line)
++        if fdcl:
++            ind, body, nm = fdcl
++            # linkage is part of the identity: g++ rejects a C and a C++
++            # declaration of one variable even though both name one symbol
++            link = 'C:' if (_scan.c_linkage or body.lstrip().startswith('extern "C"')) else '+:'
++            key = link + normalize(re.sub(r'^extern\s*("C"\s*)?', '', body), nm[0])
++            file_decl_body[nm[0]].add(key)
++            all_bodies[nm[0]].add(key)
++            continue
++        fm = FUNC_DEF.match(line)
++        if fm and '::' not in line.split('(')[0]:
++            defined.add(fm.group(1))
++            continue
++        dm = DATA_DEF.match(line)
++        if dm:
++            defined.add(dm.group(1))
++
++    renames = []            # block: (fn_depth_at_decl, old, new)
++    file_renames = {}       # file scope: old -> new
++    rename_ns = {}          # old -> namespace depth the rename was made at
++    counter = collections.Counter()
++    inserted = set()
++    pending_global = {}
++    file_words = set()
++    cur_header = ''
++    inserts = {}
++    top_start = 0
++    out = []
++    changed = 0
++    prev_code = ''
++    for idx, line, fd in _scan(lines):
++        if fd is None:
++            out.append(line)
++            continue
++        st = line.strip()
++        if fd == 0:
++            sc0 = strip_code(line)
++            # identifiers DECLARED at file scope so far (a function's own
++            # `struct Handler`, or a class's nested typedef, is not among them)
++            dm0 = re.match(r'^\s*(?:typedef|struct|class|union|enum|using|extern|namespace)\b', sc0)
++            if dm0 or DATA_DEF.match(line):
++                file_words.update(IDENT.findall(sc0))
++            if '(' in sc0 and not sc0.strip().startswith(('#', 'extern', 'typedef')):
++                cur_header = sc0
++        if fd == 0 and st and not st.startswith(('#', '//', '/*', '*', '}')) and \
++           (prev_code.endswith((';', '}', '{')) or prev_code == '' or prev_code.startswith(('#', '//'))):
++            top_start = len(out)
++        if st:
++            prev_code = st
++        m = DECL.match(line)
++        nm = declared_name(m.group(2)) if m else None
++        kw = 'extern '
++        if m:
++            ind, body = m.group(1), m.group(2)
++        elif fd > 0:
++            bp = block_proto(line)
++            if bp:
++                ind, body, nm = bp
++                kw = ''
++        is_func = bool(nm) and bool(re.match(r'\s*\(', body[nm[2]:])) if nm else False
++        if nm and fd > 0 and is_func and not _scan.c_linkage:
++            nm = None               # C++ linkage: overloads, never a conflict
++        if nm and fd > 0:
++            name, s_, e_ = nm
++            counter[name] += 1
++            new = '%s__h%d' % (name, counter[name])
++            if is_func:
++                body = loosen(body, e_)
++            type_ids = set(IDENT.findall(body[:s_] + ' ' + body[e_:])) - KEYWORDS
++            # inside a member function, a type may be the class's own nested
++            # one (daCoin_c::Handler): only names declared at file scope count
++            pool = file_words if '::' in cur_header else (file_words | hdr)
++            visible = all(t in pool or t in BUILTIN_TYPES for t in type_ids)
++            if (visible and name not in inserted and name not in defined
++                    and name not in file_decl_body):
++                # One file-scope declaration for uses outside the declaring
++                # blocks, under its own private name too (a header may declare
++                # the name with yet another type).
++                g = '%s__g' % name
++                inserts.setdefault(top_start, []).append(
++                    'extern %s __asm__("%s");\n' % ((body[:s_] + g + body[e_:]).strip(), name))
++                inserted.add(name)
++                pending_global[name] = g
++            body = body[:s_] + new + body[e_:]
++            out.append('%s%s%s __asm__("%s");\n' % (ind, kw, body.rstrip(), name))
++            renames.append((fd, name, new))
++            changed += 1
++            continue
++        fdcl = file_decl(line) if fd == 0 else None
++        if fdcl:
++            ind, body, (name, s_, e_) = fdcl
++            f_is_func = bool(re.match(r'\s*\(', body[e_:]))
++            c_link = _scan.c_linkage or body.lstrip().startswith('extern "C"')
++            if f_is_func and not c_link:
++                fdcl = None
++            elif _scan.ns_depth:
++                # a namespace member is reached qualified (Ns::f), so it keeps
++                # its name whatever its linkage
++                fdcl = None
++        if fdcl:
++            if name in defined or len(file_decl_body[name]) > 1 or name in inserted:
++                counter[name] += 1
++                new = '%s__f%d' % (name, counter[name])
++                if f_is_func:
++                    body = loosen(body, e_)
++                body = body[:s_] + new + body[e_:]
++                out.append('%s%s __asm__("%s");\n' % (ind, body.rstrip(), name))
++                file_renames[name] = new
++                rename_ns[name] = _scan.ns_depth   # a namespace's renames end with it
++                changed += 1
++                continue
++            file_renames.pop(name, None)
++        elif fd == 0:
++            fm = FUNC_DEF.match(line)
++            if fm and '::' not in line.split('(')[0]:
++                file_renames.pop(fm.group(1), None)
++            else:
++                dm = DATA_DEF.match(line)
++                if dm:
++                    file_renames.pop(dm.group(1), None)
++        for _, old, new in renames:
++            line = re.sub(r'(?<![\w.>:])%s\b' % re.escape(old), new, line)
++        # drop renames made inside a namespace that has since closed
++        for n_ in [n_ for n_, d_ in rename_ns.items() if d_ > _scan.ns_depth]:
++            file_renames.pop(n_, None)
++            rename_ns.pop(n_, None)
++        ns_decl = _scan.ns_depth > 0 and fd == 0 and file_decl(line) is not None
++        if fd >= 0 and not ns_decl:   # members and namespace members keep their names
++            for old, new in file_renames.items():
++                line = re.sub(r'(?<![\w.>:])%s\b' % re.escape(old), new, line)
++        out.append(line)
++        # block renames end with their block; once back at file scope, the
++        # names declared only in blocks resolve to their file-scope copy
++        sc = strip_code(line)
++        if pending_global and _scan.real_depth + sc.count('{') - sc.count('}') <= 0 and '}' in sc:
++            for n_, g_ in pending_global.items():
++                file_renames.setdefault(n_, g_)
++            pending_global.clear()
++        if '}' in sc and renames:
++            depth_after = _scan.real_depth + sc.count('{') - sc.count('}')
++            ended = [r for r in renames if r[0] > depth_after]
++            renames = [r for r in renames if r[0] <= depth_after]
++            # mwccarm keeps a block's extern visible after the block: later
++            # uses in the same function find the file-scope copy
++            for _, old_, _n in ended:
++                if old_ in pending_global and not any(r[1] == old_ for r in renames):
++                    file_renames[old_] = pending_global[old_]
++    final = []
++    for i, l in enumerate(out):
++        final.extend(inserts.get(i, []))
++        final.append(l)
++    transform.conflicts = sum(1 for v in all_bodies.values() if len(v) > 1)
++    return final, changed
++
++
++SCALAR_INIT = re.compile(r'^(\s*)(?:const\s+)?((?:unsigned\s+|signed\s+)?(?:int|long|short|char|bool|'
++                         r'[su](?:8|16|32|64)|Fix12i|size_t|[A-Za-z_]\w*\s*\*+|void\s*\*+))\s*(?<=[\s*])'
++                         r'([A-Za-z_]\w*)\s*=\s*([^;{}]+);\s*(//.*)?$')
++
++
++def top_level_comma(expr):
++    d = 0
++    for ch in strip_code(expr):
++        if ch in '([':
++            d += 1
++        elif ch in ')]':
++            d -= 1
++        elif ch == ',' and d == 0:
++            return True
++    return False
++
++
++def typedef_names(include_dir):
++    """Names the headers make typedefs (and not struct tags): mwccarm accepts
++    `struct Vector3 v;` for a typedef'd Vector3, g++ does not."""
++    import os
++    tds, tags = set(), set()
++    for root, _, files in os.walk(include_dir):
++        for f in files:
++            if not f.endswith('.h'):
++                continue
++            t = open(os.path.join(root, f), errors='replace').read()
++            tds.update(re.findall(r'\btypedef\b[^;{}]*?\b([A-Za-z_]\w*)\s*;', t))
++            tds.update(re.findall(r'\}\s*([A-Za-z_]\w*)\s*;', t) if 'typedef' in t else [])
++            tags.update(re.findall(r'\b(?:struct|class|union)\s+([A-Za-z_]\w*)\s*[{:]', t))
++    return tds - tags
++
++
++def spelling_fixups(lines, tdnames):
++    """Spellings mwccarm takes and g++ rejects, each meaning-preserving:
++    `extern "C" extern T x;`, `extern struct X;` and `struct T` for a
++    typedef'd T."""
++    out = []
++    tdre = re.compile(r'\bstruct\s+(%s)\b(?!\s*[{:])' % '|'.join(map(re.escape, sorted(tdnames)))) if tdnames else None
++    for line in lines:
++        # mwccarm's call-range pragma is scoped by its #pragma push/pop; g++
++        # ignores push/pop but knows ARM `long_calls`, and would put every
++        # later declaration of the TU under it (changing the function types)
++        if re.match(r'^\s*#\s*pragma\s+(long_calls|no_long_calls|long_calls_off)\b', line):
++            line = '// (host) ' + line.lstrip()
++        line = re.sub(r'\bextern\s*"C"\s+extern\b', 'extern "C"', line)
++        # an `inline` out-of-class member definition that other TUs call out of
++        # line (mwccarm emitted it anyway; g++ only emits inline functions a
++        # TU uses): drop `inline` so the host emits it too
++        line = re.sub(r'^inline\s+(?=[A-Za-z_]\w*::~?[A-Za-z_]\w*\s*\()', '', line)
++        # a C TU's own booleans: C++ already has false/true, with these values
++        if re.match(r'^\s*enum\s*\{\s*false\s*,\s*true\s*\}\s*;', line):
++            line = '// (host) ' + line.lstrip()
++        # C's `T x[];` at file scope is a declaration of an array defined
++        # elsewhere; C++ wants it spelled extern
++        if re.match(r'^(?!\s*(?:extern|typedef|static|return)\b)[A-Za-z_][\w\s\*]*\b[A-Za-z_]\w*\s*\[\s*\]\s*;', line):
++            line = 'extern ' + line
++        # a storage class inside a cast: `((extern int (*)(...))f)`
++        line = re.sub(r'\(\s*extern\s+(?=[A-Za-z_][\w\s\*]*\(\s*\*\s*\))', '(', line)
++        # one-line local twins: `typedef struct T {...} T;` and the anonymous
++        # `typedef struct {...} T;` -- in C++ `struct T {...};` is the same type
++        # and lets the TU's `struct T x;` spelling stand
++        line = re.sub(r'\btypedef\s+struct\s+([A-Za-z_]\w*)\s*(\{[^{}]*\})\s*\1\s*;', r'struct \1 \2;', line)
++        line = re.sub(r'\btypedef\s+struct\s*(\{[^{}]*\})\s*([A-Za-z_]\w*)\s*;', r'struct \2 \1;', line)
++        line = re.sub(r'^(\s*)extern\s+((?:struct|class|union)\s+[A-Za-z_]\w*\s*;)', r'\1\2', line)
++        if tdre:
++            line = tdre.sub(r'\1', line)
++        out.append(line)
++    # mwccarm's `#pragma cplusplus off` compiles what follows as C, so its
++    # functions get C linkage; on the host that is an extern "C" region
++    opened = False
++    for k, line in enumerate(out):
++        if re.match(r'^\s*#\s*pragma\s+cplusplus\s+off\b', line) and not opened:
++            out[k] = 'extern "C" {  // (host) #pragma cplusplus off\n'
++            opened = True
++        elif re.match(r'^\s*#\s*pragma\s+cplusplus\s+(on|reset)\b', line):
++            out[k] = ('}  // (host) #pragma cplusplus on\n' if opened else '// (host) ' + line.lstrip())
++            opened = False
++    if opened:
++        out.append('}  // (host) end of #pragma cplusplus off\n')
++    # the same twins spread over several lines
++    i = 0
++    while i < len(out):
++        m = re.match(r'^(\s*)typedef\s+struct\s*([A-Za-z_]\w*)?\s*\{\s*(//.*)?$', out[i])
++        if m:
++            depth, j = 0, i
++            while j < len(out):
++                sc = strip_code(out[j])
++                depth += sc.count('{') - sc.count('}')
++                if depth <= 0 and j > i or (depth <= 0 and '}' in sc):
++                    break
++                j += 1
++            if j < len(out):
++                cm = re.match(r'^(\s*)\}\s*([A-Za-z_]\w*)\s*;\s*(//.*)?$', out[j])
++                if cm and (m.group(2) is None or m.group(2) == cm.group(2)):
++                    out[i] = '%sstruct %s {\n' % (m.group(1), cm.group(2))
++                    out[j] = '%s};\n' % cm.group(1)
++            i = j + 1 if j > i else i + 1
++            continue
++        i += 1
++    return out
++
++
++# matched against strip_code() output, where extern "C" reads `extern    `
++ASM_FUNC = re.compile(r'^\s*(?:extern\s*(?:"C")?\s*)?(?:static\s+|inline\s+)*asm\b[^;{]*\(')
++ASM_STMT = re.compile(r'^(\s*)asm\s*\{[^{}]*\}\s*;?\s*(//.*)?$')
++
++
++def strip_asm(lines):
++    """Drop hand-written ARM `asm` function definitions (and mwccarm's
++    `#pragma thumb`): a host compiler cannot take them. What each did is
++    provided natively for the host (port/vita/game_host.cpp); the TU's C
++    functions stay. The removed span is replaced by a one-line marker."""
++    out, i, n = [], 0, len(lines)
++    while i < n:
++        line = lines[i]
++        if re.match(r'^\s*#\s*pragma\s+(thumb|arm)\b', line):
++            out.append('// (host) ' + line.lstrip()); i += 1
++            continue
++        # an inline `asm { ... }` statement inside a C function (CP15 reads,
++        # the udf of __builtin_trap): no host meaning; the functions that
++        # matter are replaced as a whole in port/vita/game_host.cpp
++        sm = ASM_STMT.match(line)
++        if sm:
++            out.append('%s/* (host) asm statement dropped */\n' % sm.group(1)); i += 1
++            continue
++        # the same, spread over lines: `asm {` ... `}`
++        sm = re.match(r'^(\s*)asm\s*\{\s*(//.*)?$', line)
++        if sm:
++            j = i + 1
++            while j < n and not re.match(r'^\s*\}\s*;?\s*(//.*)?$', lines[j]):
++                j += 1
++            out.append('%s/* (host) asm statement dropped */\n' % sm.group(1))
++            out.extend(['\n'] * (j - i))
++            i = j + 1
++            continue
++        if ASM_FUNC.match(strip_code(line)):
++            depth, j, seen = 0, i, False
++            while j < n:
++                sc = strip_code(lines[j])
++                depth += sc.count('{') - sc.count('}')
++                seen = seen or '{' in sc
++                if seen and depth <= 0:
++                    break
++                if not seen and ';' in sc:      # a prototype, not a definition
++                    break
++                j += 1
++            if seen:
++                name = re.search(r'([A-Za-z_]\w*)\s*\(', strip_code(line).split('asm', 1)[1])
++                out.append('// (host) asm %s: provided natively\n' % (name.group(1) if name else '?'))
++                out.extend(['\n'] * (j - i))   # keep line numbers stable
++                i = j + 1
++                continue
++        out.append(line); i += 1
++    return out
++
++
++# The game's own C runtime (src/cstd4.cpp, MSL) defines a few names the host
++# C library also defines. The host's win: the game's copy is renamed out of
++# the way (its callers bind to the host's, with the same contract).
++HOST_LIBC = {'abort', 'exit'}
++
++
++def rename_libc_defs(lines):
++    out = []
++    for idx, line, fd in _scan(lines):
++        if fd == 0:
++            m = re.match(r'^(\s*(?:extern\s*"C"\s*)?[A-Za-z_][\w\s\*]*?\b)(%s)(\s*\([^;]*)$'
++                         % '|'.join(sorted(HOST_LIBC)), line)
++            if m and ';' not in strip_code(line):
++                line = '%s%s__game%s' % (m.group(1), m.group(2), m.group(3))
++        out.append(line)
++    return out
++
++
++def split_goto_inits(lines):
++    """In a TU that uses goto, every block-scope `T x = e;` (non-const scalar
++    T) becomes `T x; x = e;`. g++ rejects a goto that jumps past an
++    initialization where mwccarm takes it; for a scalar the split is the same
++    program, wherever it is applied."""
++    if not any(re.search(r'\bgoto\b', strip_code(l)) for l in lines):
++        return lines
++    res = list(lines)
++    for idx, line, fd in _scan(lines):
++        if fd is None or fd <= 0:
++            continue
++        if re.match(r'^\s*const\b', line):
++            continue
++        m = SCALAR_INIT.match(line)
++        if m and not top_level_comma(m.group(4)):
++            res[idx] = '%s%s %s; %s = %s;\n' % (m.group(1), m.group(2), m.group(3),
++                                               m.group(3), m.group(4).strip())
++    return res
++
++
++def main():
++    import os
++    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++    hdr = header_names([os.path.join(repo, 'include')])
++    if len(sys.argv) >= 2 and sys.argv[1] == '--check':
++        # a TU needs the transform when it declares some name with two types
++        for f in sys.argv[2:]:
++            transform(open(os.path.join(repo, f) if not os.path.isabs(f) else f,
++                           errors='replace').readlines(), hdr)
++            if transform.conflicts:
++                print(f)
++        return
++    src, dst = sys.argv[1], sys.argv[2]
++    # `--or ORIG`: the hostgen copy may not exist (hostgen writes nothing for
++    # a TU that is all asm); then transform the original instead
++    if len(sys.argv) >= 5 and sys.argv[3] == '--or' and not os.path.exists(src):
++        src = sys.argv[4]
++    lines = strip_asm(open(src, errors='replace').readlines())
++    lines = spelling_fixups(lines, typedef_names(os.path.join(repo, 'include')))
++    out, n = transform(lines, hdr)
++    out = split_goto_inits(out)
++    renamed = rename_libc_defs(out)
++    libc_hdr = renamed != out
++    out = renamed
++    # mwccarm intrinsics these TUs use, spelled for g++
++    prelude = ['// host copy: port/tools/hostexterns.py\n',
++               '#include <string.h>\n',
++               '#define __builtin__clear(p, n) memset((void *)(p), 0, (n))\n']
++    if libc_hdr:     # its own exit/abort renamed: calls go to the host's
++        prelude.append('#include <stdlib.h>\n')
++    os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
++    open(dst, 'w').writelines(prelude + out)
++    print('hostexterns: %s: %d declaration(s) renamed' % (src, n), file=sys.stderr)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/port/tools/hostgen.py b/port/tools/hostgen.py
+index c651f07..9b1b71b 100644
+--- a/port/tools/hostgen.py
++++ b/port/tools/hostgen.py
+@@ -103,8 +103,15 @@ def is_asm(text):
+     return bool(ASM_BLOCK.search(text))
+ 
+ 
+-def emit(src_path, out_dir, decomp_root):
++def emit(src_path, out_dir, decomp_root, strip_asm=False):
+     text = src_path.read_text(encoding="utf-8", errors="replace")
++    if strip_asm:
++        # GCC builds: drop the TU's hand-written asm functions first (see
++        # port/tools/hostexterns.py strip_asm; the host provides each one
++        # natively) so the rest of the TU still gets its MMIO rewrites
++        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
++        import hostexterns
++        text = "".join(hostexterns.strip_asm(text.splitlines(keepends=True)))
+     # The decomp marks C++ files with a leading `//cpp` line; the host build
+     # compiles everything as C++ anyway, so drop it.
+     text = re.sub(r"\A//cpp[^\n]*\n", "", text)
+@@ -135,6 +142,8 @@ def main():
+     # Console builds (port/vita) pick their hostgen set automatically: any slice
+     # file that touches a DS address must go through the transform there,
+     # because nothing is mapped at those addresses.
++    ap.add_argument("--strip-asm", action="store_true",
++                    help="drop asm functions instead of skipping the TU (GCC builds)")
+     ap.add_argument("--paths", nargs="+", metavar="FILE",
+                     help="transform these files (paths relative to --decomp)")
+     ap.add_argument("--needs", nargs="+", metavar="FILE",
+@@ -182,6 +191,12 @@ def main():
+     skipped = []
+     for path in targets:
+         text = path.read_text(encoding="utf-8", errors="replace")
++        if is_asm(text) and args.strip_asm:
++            out, n = emit(path, out_dir, decomp, strip_asm=True)
++            total += n
++            if not args.all:
++                print(f"{path.name:<44} {n:>3} MMIO rewrite(s), asm dropped -> {out}")
++            continue
+         if is_asm(text):
+             skipped.append(path.stem)
+             if not args.all:
+diff --git a/port/tools/romimage.py b/port/tools/romimage.py
+new file mode 100644
+index 0000000..20ceb6a
+--- /dev/null
++++ b/port/tools/romimage.py
+@@ -0,0 +1,408 @@
++#!/usr/bin/env python3
++"""Generate the host side of the game's ROM-resident data (PS Vita / GCC port).
++
++The decomp's C sources define code and some data; the rest of the game's
++initialized globals (tables, strings, vtables-in-data, pointer arrays) exist
++only as bytes in the cartridge's ARM9 and overlay images. On the DS the hybrid
++build links those bytes in by address. A host binary links by NAME, so every
++such global needs (1) host storage under its symbol name and (2) its bytes,
++with every embedded DS pointer rewritten to the host address of its target.
++
++This tool does (1) and the bookkeeping for (2) from the repo's own maps --
++config/arm9/**/{symbols,delinks,relocs}.txt -- and NO ROM BYTES: the bytes are
++read from the user's own dump at startup by port/hal/romimage_rt.cpp, using the
++tables emitted here. Nothing derived from the ROM's contents lands in the tree.
++
++Inputs
++  --config DIR     config/arm9
++  --defined FILE   symbol names the compiled objects already define (nm output,
++                   one name per line). Those keep their C definitions; any
++                   other name at the same DS address is aliased to them.
++  --out-cpp FILE   generated storage + tables (C++)
++  --out-ld FILE    linker script fragment with the aliases (NAME = OTHER;)
++
++Output model
++  For every data/rodata/bss symbol of every module (main, itcm, dtcm, ovNNN)
++  that no object defines:
++    * storage: one aligned byte array per distinct DS address, sized to the
++      distance to the next symbol in its section (bss(size=) when given), named
++      by the symbol through an asm label; other names at that address alias it;
++    * if the section is .data/.rodata: a FILL entry (module, DS address, size,
++      storage) -- bytes copied from that module's image at startup;
++    * every `kind:load` relocation whose source lies inside a filled symbol: a
++      PATCH entry (storage, offset, target), the target being the host address
++      of the DS symbol containing the relocation's destination plus the
++      remaining offset.
++  .bss storage is left zero (the DS boot state).
++"""
++import argparse
++import bisect
++import collections
++import os
++import re
++import sys
++
++SECTION_RE = re.compile(r'^\s+(\.[\w.]+)\s+start:(0x[0-9a-f]+)\s+end:(0x[0-9a-f]+)\s+kind:(\w+)')
++SYM_RE = re.compile(r'^(\S+)\s+kind:(\w+)(?:\(([^)]*)\))?\s+addr:(0x[0-9a-f]+)')
++RELOC_RE = re.compile(r'^from:(0x[0-9a-f]+)\s+kind:(\w+)\s+to:(0x[0-9a-f]+)\s+module:(\w+)(?:\(([^)]*)\))?')
++
++DATA_SECTIONS = ('.data', '.rodata')
++STORAGE_SECTIONS = ('.data', '.rodata', '.bss')
++
++
++class Module:
++    def __init__(self, name, path):
++        self.name = name          # 'main', 'itcm', 'dtcm', 'ov002', ...
++        self.path = path
++        self.sections = []        # (name, start, end, kind)
++        self.syms = []            # (addr, name, kind, arg)
++        self.relocs = []          # (from, kind, to, module, arg)
++
++    @property
++    def ov_id(self):
++        return int(self.name[2:]) if self.name.startswith('ov') else -1
++
++    def section_of(self, addr):
++        for s in self.sections:
++            if s[1] <= addr < s[2]:
++                return s
++        return None
++
++
++def load_modules(config):
++    mods = {}
++    def load(name, d):
++        m = Module(name, d)
++        for l in open(os.path.join(d, 'delinks.txt')):
++            mm = SECTION_RE.match(l)
++            if not mm:
++                if l.strip() and not l.startswith(' '):
++                    break           # first per-file block: header done
++                continue
++            m.sections.append((mm.group(1), int(mm.group(2), 16), int(mm.group(3), 16), mm.group(4)))
++        for l in open(os.path.join(d, 'symbols.txt')):
++            mm = SYM_RE.match(l)
++            if mm:
++                m.syms.append((int(mm.group(4), 16), mm.group(1), mm.group(2), mm.group(3) or ''))
++        for l in open(os.path.join(d, 'relocs.txt')):
++            mm = RELOC_RE.match(l)
++            if mm:
++                m.relocs.append((int(mm.group(1), 16), mm.group(2), int(mm.group(3), 16),
++                                 mm.group(4), mm.group(5) or ''))
++        m.syms.sort()
++        mods[name] = m
++    load('main', config)
++    for extra in ('itcm', 'dtcm'):
++        if os.path.isdir(os.path.join(config, extra)):
++            load(extra, os.path.join(config, extra))
++    ovdir = os.path.join(config, 'overlays')
++    for n in sorted(os.listdir(ovdir)):
++        load(n, os.path.join(ovdir, n))
++    return mods
++
++
++def c_ident(i):
++    return 'rim_%d' % i
++
++
++VALID_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_.$]*$')
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument('--config', required=True)
++    ap.add_argument('--defined', help='file of names the objects define (one per line)')
++    ap.add_argument('--nm', help='nm to run over --objects instead of --defined')
++    ap.add_argument('--objects', nargs='*', default=[], help='objects/archives for --nm')
++    ap.add_argument('--out-cpp', required=True)
++    ap.add_argument('--out-ld', required=True)
++    ap.add_argument('--manifests', help='config/tu_manifest.d: undefined_symbol_aliases')
++    a = ap.parse_args()
++
++    if a.defined:
++        defined = set(l.strip() for l in open(a.defined) if l.strip())
++    else:
++        import subprocess
++        defined = set()
++        objs = [o for o in a.objects if o and os.path.exists(o)]
++        for i in range(0, len(objs), 200):
++            outp = subprocess.run([a.nm, '--defined-only'] + objs[i:i + 200],
++                                  capture_output=True, text=True).stdout
++            for l in outp.splitlines():
++                p = l.split()
++                if len(p) >= 3 and p[1] != 'U':
++                    defined.add(p[2])
++    mods = load_modules(a.config)
++
++    # ---- every symbol, per module, with its extent --------------------------
++    # addr -> names, per module; and the storage decision per (module, addr).
++    storages = []           # dicts: mod, addr, size, section, names
++    by_key = {}             # (mod, addr) -> storage index, or 'C:<name>' if defined
++    aliases = []            # (alias_name, target_name)
++    for m in mods.values():
++        groups = collections.OrderedDict()
++        for addr, name, kind, arg in m.syms:
++            groups.setdefault(addr, []).append((name, kind, arg))
++        addrs = list(groups)
++        for i, addr in enumerate(addrs):
++            sec = m.section_of(addr)
++            # sections can carry suffixes (.rodata.coin_tables): match the stem
++            if not sec or not sec[0].split('.')[1].startswith(('data', 'rodata', 'bss')):
++                continue
++            names = [n for n, k, _ in groups[addr] if k in ('data', 'bss')]
++            if not names:
++                continue
++            # extent: to the next symbol of the same section, else section end
++            nxt = sec[2]
++            for j in range(i + 1, len(addrs)):
++                if addrs[j] >= sec[2]:
++                    break
++                nxt = addrs[j]
++                break
++            size = nxt - addr
++            for n, k, arg in groups[addr]:
++                mm = re.match(r'size=(0x[0-9a-f]+)', arg)
++                if k == 'bss' and mm:
++                    size = max(size, int(mm.group(1), 16))
++            cdef = [n for n in names if n in defined]
++            if cdef:
++                by_key[(m.name, addr)] = 'C:' + cdef[0]
++                for n in names:
++                    if n not in defined:
++                        aliases.append((n, cdef[0]))
++                continue
++            names = [n for n in names if not n.startswith('.')]
++            if not names:
++                continue
++            by_key[(m.name, addr)] = len(storages)
++            storages.append(dict(mod=m.name, addr=addr, size=max(size, 4),
++                                 section=sec[0], names=names))
++
++    # ---- relocation targets --------------------------------------------------
++    sym_index = {}          # module -> (sorted addrs, [(name, kind)])
++    for m in mods.values():
++        ad, nk = [], []
++        for addr, name, kind, arg in m.syms:
++            if name.startswith('.'):
++                continue
++            ad.append(addr)
++            nk.append((name, kind, arg))
++        sym_index[m.name] = (ad, nk)
++
++    def resolve(mod_name, to):
++        ad, nk = sym_index.get(mod_name, ([], []))
++        i = bisect.bisect_right(ad, to) - 1
++        if i < 0:
++            return None
++        # several names can share the address: prefer one we can reference
++        base = ad[i]
++        j = i
++        cands = []
++        while j >= 0 and ad[j] == base:
++            cands.append(nk[j]); j -= 1
++        for name, kind, arg in cands:
++            key = by_key.get((mod_name, base))
++            if kind in ('data', 'bss'):
++                if isinstance(key, int):
++                    return ('S', key, to - base)
++                if isinstance(key, str) and VALID_NAME.match(key[2:]):
++                    return ('N', key[2:], to - base)
++            if kind in ('function', 'label') and VALID_NAME.match(name):
++                return ('N', name, to - base)
++        return None
++
++    fills = [i for i, s in enumerate(storages) if s['section'].split('.')[1].startswith(('data', 'rodata'))]
++    fill_of = {}
++    for i in fills:
++        s = storages[i]
++        fill_of.setdefault(s['mod'], []).append((s['addr'], s['addr'] + s['size'], i))
++    for v in fill_of.values():
++        v.sort()
++
++    exact_at = {mn: {ad: nm for ad, nm, k, _ in mm.syms} for mn, mm in mods.items()}
++    guesses = []            # ambiguous overlay pointers settled by default
++    patches = []            # (storage idx, offset, target)
++    stats = collections.Counter()
++    for m in mods.values():
++        ranges = fill_of.get(m.name, [])
++        starts = [r[0] for r in ranges]
++        for frm, kind, to, tmod, targ in m.relocs:
++            if kind != 'load':
++                continue
++            k = bisect.bisect_right(starts, frm) - 1
++            if k < 0 or not (ranges[k][0] <= frm < ranges[k][1]):
++                continue
++            sidx = ranges[k][2]
++            if tmod == 'main' or tmod in ('itcm', 'dtcm'):
++                tm = tmod
++            elif tmod == 'overlay':
++                tm = 'ov%03d' % int(targ)
++            elif tmod == 'overlays':
++                # The address belongs to whichever overlay is resident when it
++                # is used; on the host every overlay has its own storage, so
++                # one must be chosen here. In order: the source's own overlay;
++                # the one candidate whose symbol AT that address the decomp has
++                # named (the game's reference is what got it a name); the
++                # overlays resident during play (ov000 common, ov002 player).
++                cands = ['ov%03d' % int(x) for x in re.split(r'[,\s]+', targ) if x]
++                tm, why = None, None
++                if m.name in cands:
++                    tm, why = m.name, 'own overlay'
++                else:
++                    exact = [c for c in cands if to in exact_at.get(c, {})]
++                    named = [c for c in exact if not re.match(r'(data|func)_|@', exact_at[c][to])]
++                    if len(named) == 1:
++                        tm, why = named[0], 'named symbol'
++                    else:
++                        pool = named or exact or cands
++                        core = [c for c in ('ov000', 'ov002') if c in pool]
++                        tm, why = (core[0], 'resident overlay') if core else (pool[0] if pool else None, 'first candidate')
++                stats['ambiguous target -> %s' % why] += 1
++                if why == 'first candidate':
++                    guesses.append('%s 0x%08x -> 0x%08x in %s of %s' % (m.name, frm, to, tm, ','.join(cands)))
++            else:
++                stats['target module none'] += 1
++                continue
++            r = resolve(tm, to) if tm else None
++            if r is None:
++                stats['unresolved target'] += 1
++                continue
++            patches.append((sidx, frm - storages[sidx]['addr'], r))
++            stats['patch'] += 1
++
++    # A DS pointer to something the host binary does not have (the DS's static
++    # initializers __sinit_*, which the host C++ runtime replaces; the DS C++
++    # runtime's own RTTI classes) is written as null rather than linked: the
++    # host never follows it, and the list says which ones they are.
++    nulled = sorted({r[1] for _, _, r in patches if r[0] == 'N' and r[1] not in defined})
++    if nulled:
++        patches = [(si, off, (('Z', None, 0) if (r[0] == 'N' and r[1] not in defined) else r))
++                   for si, off, r in patches]
++    with open(a.out_ld + '.nulled.txt', 'w') as g:
++        g.write('# DS pointers to symbols the host does not define: written as null\n')
++        g.writelines(n + '\n' for n in nulled)
++    stats['pointer target not on host (nulled)'] = len(nulled)
++
++    # ---- emit ---------------------------------------------------------------
++    ext_names = sorted({r[1] for _, _, r in patches if r[0] == 'N'})
++    with open(a.out_cpp, 'w') as o:
++        o.write('// GENERATED by port/tools/romimage.py from config/arm9 maps. Do not edit.\n')
++        o.write('// Storage for the game globals that live only in the ROM image, and the\n')
++        o.write('// tables port/hal/romimage_rt.cpp fills them from at startup. No ROM bytes.\n')
++        o.write('#include "romimage_rt.h"\n\n')
++        for i, s in enumerate(storages):
++            sec = '.bss' if s['section'].startswith('.bss') else '.data'
++            if VALID_NAME.match(s['names'][0]):
++                o.write('alignas(8) unsigned char %s[%d] __asm__("%s") __attribute__((used, section("%s.rim.%s")));\n'
++                        % (c_ident(i), s['size'], s['names'][0], sec, s['names'][0]))
++            else:
++                # mwcc-local names (@123 string literals and the like): no C
++                # source can name them, only the relocation table points here
++                o.write('alignas(8) static unsigned char %s[%d] __attribute__((used, section("%s.rim.%s")));\n'
++                        % (c_ident(i), s['size'], sec, c_ident(i)))
++        o.write('\n')
++        for i, n in enumerate(ext_names):
++            o.write('extern unsigned char rimx_%d __asm__("%s");\n' % (i, n))
++        xid = {n: i for i, n in enumerate(ext_names)}
++        o.write('\nconst RimFill rim_fills[] = {\n')
++        for i in fills:
++            s = storages[i]
++            mid = -1 if s['mod'] == 'main' else (-2 if s['mod'] == 'itcm' else (-3 if s['mod'] == 'dtcm' else int(s['mod'][2:])))
++            o.write('  {%d, 0x%08x, %d, %s},\n' % (mid, s['addr'], s['size'], c_ident(i)))
++        o.write('};\nconst unsigned rim_fill_count = sizeof rim_fills / sizeof rim_fills[0];\n\n')
++        o.write('const RimPatch rim_patches[] = {\n')
++        for sidx, off, r in patches:
++            if r[0] == 'Z':
++                o.write('  {%s + %d, 0},\n' % (c_ident(sidx), off))
++                continue
++            tgt = ('%s' % c_ident(r[1])) if r[0] == 'S' else ('&rimx_%d' % xid[r[1]])
++            o.write('  {%s + %d, %s + %d},\n' % (c_ident(sidx), off, tgt, r[2]))
++        o.write('};\nconst unsigned rim_patch_count = sizeof rim_patches / sizeof rim_patches[0];\n')
++    with open(a.out_ld, 'w') as o:
++        o.write('/* GENERATED by port/tools/romimage.py: other names of C-defined globals */\n')
++        seen = set()
++        for n, t in aliases:
++            if n in seen or not VALID_NAME.match(n) or not VALID_NAME.match(t):
++                continue
++            seen.add(n)
++            o.write('PROVIDE("%s" = "%s");\n' % (n, t))
++        for i, s in enumerate(storages):
++            if not VALID_NAME.match(s['names'][0]):
++                continue
++            for n in s['names'][1:]:
++                if n not in seen and VALID_NAME.match(n):
++                    seen.add(n)
++                    o.write('PROVIDE("%s" = "%s");\n' % (n, s['names'][0]))
++    # ---- names a TU references but the retail link resolves by address --------
++    # (per-actor resource-family types and the like: config/tu_manifest.d
++    # records, per relocation site, which canonical symbol the ROM calls)
++    n_man = n_unres = 0
++    if a.manifests:
++        import glob, json
++        with open(a.out_ld, 'a') as o:
++            for f in sorted(glob.glob(os.path.join(a.manifests, '**', '*.json'), recursive=True)):
++                try:
++                    d = json.load(open(f))
++                except ValueError:
++                    continue
++                for al in d.get('undefined_symbol_aliases') or []:
++                    n, t = al.get('symbol'), al.get('canonical_symbol')
++                    if not n or not t or n in seen or n in defined:
++                        continue
++                    if not VALID_NAME.match(n):
++                        continue
++                    # The canonical NAME can be stale (renamed since); its
++                    # address is not. Take whichever name at that address the
++                    # objects actually define.
++                    if t not in defined:
++                        mod = al.get('canonical_module') or 'main'
++                        mod = 'main' if mod == 'arm9' else mod
++                        try:
++                            addr = int(al.get('canonical_address', '0'), 16)
++                        except ValueError:
++                            addr = 0
++                        alts = [nm for ad_, nm, k, _ in mods.get(mod, mods['main']).syms
++                                if ad_ == addr and nm in defined]
++                        if not alts:
++                            n_unres += 1
++                            continue
++                        t = alts[0]
++                    if not VALID_NAME.match(t):
++                        continue
++                    seen.add(n)
++                    o.write('PROVIDE("%s" = "%s");\n' % (n, t))
++                    n_man += 1
++    # OVERLAY_<n>_ID and OV<nnn>_TEXT_START/_BSS_END: the DS link's per-overlay
++    # constants, used by address. The bounds stay DS addresses (the game
++    # compares and subtracts them; it never dereferences them on the host).
++    with open(a.out_ld, 'a') as o:
++        for name, mm in mods.items():
++            if not name.startswith('ov'):
++                continue
++            n = int(name[2:])
++            o.write('PROVIDE(OVERLAY_%d_ID = %d);\n' % (n, n))
++            text = [s_ for s_ in mm.sections if s_[0] == '.text']
++            bss = [s_ for s_ in mm.sections if s_[0].startswith('.bss')]
++            if text:
++                o.write('PROVIDE(OV%03d_TEXT_START = 0x%08x);\n' % (n, text[0][1]))
++            if bss:
++                o.write('PROVIDE(OV%03d_BSS_END = 0x%08x);\n' % (n, bss[-1][2]))
++    # Hand-checked aliases the maps cannot derive (port/vita/host_aliases.ld)
++    extra = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vita', 'host_aliases.ld')
++    if os.path.exists(extra):
++        with open(a.out_ld, 'a') as o:
++            o.write(open(extra).read())
++    print('romimage: %d manifest aliases (%d with no defined target)' % (n_man, n_unres), file=sys.stderr)
++    with open(a.out_ld + '.guesses.txt', 'w') as g:
++        g.write('# overlay pointers with no naming evidence: target chosen by default\n')
++        g.writelines(x + '\n' for x in guesses)
++    print('romimage: %d storages (%d filled, %d bss, %d KiB), %d patches, %d aliases'
++          % (len(storages), len(fills), len(storages) - len(fills),
++             sum(s['size'] for s in storages) // 1024, len(patches), len(seen)), file=sys.stderr)
++    for k, v in sorted(stats.items()):
++        if k != 'patch':
++            print('romimage:   %s: %d' % (k, v), file=sys.stderr)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index d8eab86..c9490ee 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -93,6 +93,16 @@ endfunction()
+ # Vita nothing is mapped at those addresses, so the raw file would fault there.
+ # hostgen --needs decides at configure time; each copy is generated once.
+ find_package(Python3 REQUIRED COMPONENTS Interpreter)
++# TUs whose host copy also goes through port/tools/hostexterns.py.
++file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/hostexterns_files.txt" SM64DS_HOSTEXTERNS_LINES)
++set(SM64DS_HOSTEXTERNS "")
++foreach(l IN LISTS SM64DS_HOSTEXTERNS_LINES)
++    string(STRIP "${l}" l)
++    if(NOT l STREQUAL "" AND NOT l MATCHES "^#")
++        list(APPEND SM64DS_HOSTEXTERNS "${l}")
++    endif()
++endforeach()
++
+ function(sm64ds_vita_auto_hostgen srcs_var)
+     set(rels "")
+     foreach(f IN LISTS ${srcs_var})
+@@ -111,6 +121,15 @@ function(sm64ds_vita_auto_hostgen srcs_var)
+         message(FATAL_ERROR "hostgen --needs failed: ${err}")
+     endif()
+     string(REPLACE "\n" ";" needed "${needed}")
++    set(hgen "${needed}")
++    # hostexterns-only TUs (no DS addresses) get a host copy too
++    foreach(rel IN LISTS rels)
++        list(FIND SM64DS_HOSTEXTERNS "${rel}" xi)
++        list(FIND needed "${rel}" ni)
++        if(NOT xi EQUAL -1 AND ni EQUAL -1)
++            list(APPEND needed "${rel}")
++        endif()
++    endforeach()
+     set(out_list ${${srcs_var}})
+     get_property(done GLOBAL PROPERTY SM64DS_AUTO_HOSTGEN)
+     foreach(rel IN LISTS needed)
+@@ -121,12 +140,25 @@ function(sm64ds_vita_auto_hostgen srcs_var)
+         set(out "${CMAKE_BINARY_DIR}/host-src/${out_rel}")
+         list(FIND done "${rel}" idx)
+         if(idx EQUAL -1)
+-            add_custom_command(OUTPUT "${out}"
+-                COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
++            list(FIND hgen "${rel}" hi)
++            list(FIND SM64DS_HOSTEXTERNS "${rel}" xi)
++            set(cmds "")
++            if(NOT hi EQUAL -1)
++                list(APPEND cmds COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostgen.py"
+                         --decomp "${REPO_DIR}" --out "${CMAKE_BINARY_DIR}/host-src"
+-                        --paths "${rel}"
++                        --strip-asm --paths "${rel}")
++                set(xin "${out}")
++            else()
++                set(xin "${REPO_DIR}/${rel}")
++            endif()
++            if(NOT xi EQUAL -1)
++                list(APPEND cmds COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/hostexterns.py"
++                        "${xin}" "${out}" --or "${REPO_DIR}/${rel}")
++            endif()
++            add_custom_command(OUTPUT "${out}" ${cmds}
+                 DEPENDS "${REPO_DIR}/${rel}" "${PORT_DIR}/tools/hostgen.py"
+-                COMMENT "hostgen ${rel} (touches DS addresses)")
++                        "${PORT_DIR}/tools/hostexterns.py"
++                COMMENT "host copy of ${rel}")
+             list(APPEND done "${rel}")
+         endif()
+         list(REMOVE_ITEM out_list "${REPO_DIR}/${rel}")
+@@ -260,6 +292,8 @@ function(sm64ds_vita_hostgen out_var)
+             COMMENT "hostgen ${rel}")
+         list(APPEND generated "${out}")
+         list(APPEND originals "${REPO_DIR}/${rel}")
++        # one rule per output: let sm64ds_vita_auto_hostgen reuse this copy
++        set_property(GLOBAL APPEND PROPERTY SM64DS_AUTO_HOSTGEN "${rel}")
+     endforeach()
+     set(${out_var} "${generated}" PARENT_SCOPE)
+     set(${out_var}_SRC "${originals}" PARENT_SCOPE)   # for a gate's EXCLUDE
+@@ -462,3 +496,78 @@ target_link_options(gate9 PRIVATE
+     -Wl,--wrap=_ZN17dExtShadowModel_c10InitCuboidEv
+     -Wl,--wrap=_ZN8dActor_c18DropShadowScaleXYZER17dExtShadowModel_cR9Matrix4x3iiih)
+ target_link_libraries(gate9 PRIVATE ntr)
++
++# ---- measurement only (not part of the gate patches) ----
++if(SM64DS_FULL_PROBE)
++    sm64ds_vita_gate(fullprobe SMDS00099 "SM64DS probe" vita/probe/probe_main.cpp
++        HAL hal/heap_globals.cpp hal/fs.cpp hal/romfs.cpp hal/romimage_rt.cpp vita/game_host.cpp
++        SLICES vita/slice_full.txt
++        DEFINES SM64DS_FS_ROM PORT_REPO_ROOT=".")
++    target_link_libraries(fullprobe PRIVATE ntr)
++    set_source_files_properties("${REPO_DIR}/src/SharedFilePtr.cpp" "${PORT_DIR}/hal/fs.cpp"
++        "${REPO_DIR}/src/engine/heap/Heap.cpp"
++        "${CMAKE_BINARY_DIR}/host-src/src/runtime/graphics/fader/d_fader.cpp"
++        "${CMAKE_BINARY_DIR}/host-src/src/engine/gx/G3X.cpp"
++        "${REPO_DIR}/src/runtime/graphics/fader/d_fader.cpp" "${REPO_DIR}/src/engine/gx/G3X.cpp"
++        TARGET_DIRECTORY fullprobe PROPERTIES COMPILE_DEFINITIONS SM64DS_PORT_FULL)
++endif()
++
++# Gate 10: THE WHOLE GAME. Every src/ TU (port/vita/slice_full.txt) builds into
++# one object library; port/tools/romimage.py then reads what those objects
++# define and generates storage for the game globals that live only in the ROM
++# image, plus the table of DS pointers inside them; the executable links the
++# lot. The smoke loads all of it from the user's dump at startup and follows
++# pointer chains across modules (spawn table -> overlay profile -> factory);
++# the game itself does not run yet.
++sm64ds_read_slice(vita/slice_full.txt G10_SRCS)
++sm64ds_vita_auto_hostgen(G10_SRCS)
++sm64ds_honor_cpp_markers(G10_SRCS)
++set(G10_HAL "")
++foreach(h hal/heap_globals.cpp hal/fs.cpp hal/romfs.cpp hal/romimage_rt.cpp vita/game_host.cpp)
++    list(APPEND G10_HAL "${PORT_DIR}/${h}")
++endforeach()
++set_source_files_properties(${G10_HAL} PROPERTIES
++    COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
++add_library(gate10_game OBJECT ${G10_SRCS} ${G10_HAL})
++target_include_directories(gate10_game PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
++    "${PORT_DIR}/ntr/include" "${PORT_DIR}/hal")
++target_compile_definitions(gate10_game PRIVATE SM64DS_PLATFORM_PC SM64DS_PORT_FULL
++    SM64DS_FS_ROM SM64DS_GATE_NAME="gate10" PORT_REPO_ROOT="."
++    SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" NTR_RELOCATE_REGIONS)
++target_compile_options(gate10_game PRIVATE ${SM64DS_FLAGS})
++add_dependencies(gate10_game ntr)
++
++execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.a
++                OUTPUT_VARIABLE G10_LIBSTDCXX OUTPUT_STRIP_TRAILING_WHITESPACE)
++execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libc.a
++                OUTPUT_VARIABLE G10_LIBC OUTPUT_STRIP_TRAILING_WHITESPACE)
++set(G10_GEN "${CMAKE_BINARY_DIR}/romimage/romimage_gen.cpp")
++set(G10_LD "${CMAKE_BINARY_DIR}/romimage/romimage_alias.ld")
++add_custom_command(OUTPUT "${G10_GEN}" "${G10_LD}"
++    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/romimage"
++    COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/romimage.py"
++            --config "${REPO_DIR}/config/arm9" --manifests "${REPO_DIR}/config/tu_manifest.d"
++            --nm "${CMAKE_NM}" --objects $<TARGET_OBJECTS:gate10_game> $<TARGET_FILE:ntr>
++            "${G10_LIBSTDCXX}" "${G10_LIBC}"
++            --out-cpp "${G10_GEN}" --out-ld "${G10_LD}"
++    DEPENDS gate10_game ntr "${PORT_DIR}/tools/romimage.py"
++    COMMAND_EXPAND_LISTS
++    COMMENT "romimage: storage and pointer table for the ROM-resident globals")
++set_source_files_properties("${G10_GEN}" PROPERTIES GENERATED TRUE
++    COMPILE_OPTIONS "-w;-fdata-sections")
++set(G10_TEST "${PORT_DIR}/vita/tests/smoke_romimage.cpp")
++set_source_files_properties("${G10_TEST}" PROPERTIES
++    COMPILE_DEFINITIONS "main=sm64ds_test_main"
++    COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
++add_executable(gate10 "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${G10_TEST}" "${G10_GEN}"
++    $<TARGET_OBJECTS:gate10_game>)
++target_include_directories(gate10 PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
++    "${PORT_DIR}/ntr/include" "${PORT_DIR}/hal")
++target_compile_definitions(gate10 PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="gate10"
++    SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds")
++target_compile_options(gate10 PRIVATE ${SM64DS_FLAGS})
++target_link_libraries(gate10 PRIVATE ntr)
++target_link_options(gate10 PRIVATE "-Wl,${G10_LD}" "-Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/game_init.ld")
++set_property(TARGET gate10 APPEND PROPERTY LINK_DEPENDS "${G10_LD}")
++vita_create_self(gate10.self gate10)
++vita_create_vpk(gate10.vpk SMDS00015 gate10.self VERSION 01.00 NAME "SM64DS Gate 10")
+diff --git a/port/vita/game_host.cpp b/port/vita/game_host.cpp
+new file mode 100644
+index 0000000..73359dc
+--- /dev/null
++++ b/port/vita/game_host.cpp
+@@ -0,0 +1,293 @@
++// Native host versions of what the full game build cannot compile from src/
++// (GCC / PS Vita).
++//
++// Each function here is one of the game's hand-written ARM primitives -- the
++// asm blocks port/tools/hostexterns.py drops from the host copies -- or a DS
++// SDK service whose src/ body is hardware-only. The contract each one keeps is
++// taken from its src/ definition (named per entry) or the NitroSDK function it
++// is; nothing here reads the ROM.
++//
++// Three groups:
++//   1. memory / matrix / soft-float primitives: exact semantics, natively;
++//   2. CPU-state and SDK services (interrupt masks, CP15, locks, spin waits):
++//      host equivalents over the ntr runtime's model;
++//   3. the thread context switch (ARMSaveContext/ARMRestoreContext/
++//      OS_InitContext): NOT emulated here -- the game's threads move to host
++//      threads in a later step; until then they trap loudly.
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "ntr/mmio.h"
++#include "ntr/rt.h"
++
++typedef uint8_t u8;
++typedef uint16_t u16;
++typedef uint32_t u32;
++typedef int32_t s32;
++
++[[noreturn]] static void host_trap(const char *who)
++{
++    fprintf(stderr, "FATAL: %s reached; port/vita/game_host.cpp does not "
++                    "implement it yet\n", who);
++    abort();
++}
++
++// Game code sometimes hands these primitives DS addresses (VRAM, OAM, the
++// palette) and sometimes host pointers; ntr::host_ptr is the identity on the
++// latter.
++template <class T> static inline T *hp(const void *p)
++{
++    return reinterpret_cast<T *>(::ntr::host_ptr(reinterpret_cast<uintptr_t>(p)));
++}
++
++extern "C" {
++
++// ---- 1. memory primitives (src/engine/mi/MI_Memory.c and friends) --------
++
++/* Copy48Bytes(src, dst): 48 bytes, word by word (ldmia/stmia x4). */
++void Copy48Bytes(const u32 *src, u32 *dst)
++{
++    const u32 *s = hp<const u32>(src);
++    u32 *d = hp<u32>(dst);
++    for (int i = 0; i < 12; ++i) d[i] = s[i];
++}
++
++/* MultiCopy_Int(src, dst, len): words while dst < dst + len (bytes). */
++void MultiCopy_Int(const u32 *src, u32 *dst, int len)
++{
++    const u32 *s = hp<const u32>(src);
++    u32 *d = hp<u32>(dst);
++    for (int i = 0; i < len / 4; ++i) d[i] = s[i];
++}
++
++/* MultiCopy32Bytes(src, dst, len): words, 32-byte blocks then the tail. */
++void MultiCopy32Bytes(const u32 *src, u32 *dst, int len)
++{
++    MultiCopy_Int(src, dst, len);
++}
++
++/* MultiCopyHalf(src, dst, size): halfwords at byte offsets 0, 2, .. < size. */
++void MultiCopyHalf(const void *src, void *dst, s32 size)
++{
++    const u16 *s = hp<const u16>(src);
++    u16 *d = hp<u16>(dst);
++    for (s32 i = 0; i < size / 2 + (size & 1); ++i) d[i] = s[i];
++}
++
++/* MultiStore16(val, dst, nbytes): halfword fill at offsets 0, 2, .. < nbytes. */
++void MultiStore16(u16 val, void *dst, int nbytes)
++{
++    u16 *d = hp<u16>(dst);
++    for (int i = 0; i < nbytes / 2 + (nbytes & 1); ++i) d[i] = val;
++}
++
++/* MultiStore32Bytes(val, dst, len): word fill of len bytes. */
++void MultiStore32Bytes(u32 val, u32 *dst, int len)
++{
++    u32 *d = hp<u32>(dst);
++    for (int i = 0; i < len / 4; ++i) d[i] = val;
++}
++
++/* func_0205a588 = MI_CpuFill8(dst, value, size): byte fill. */
++void func_0205a588(void *dst, int value, u32 size)
++{
++    memset(hp<u8>(dst), value & 0xff, size);
++}
++
++/* CpuCopy8 = MI_CpuCopy8(src, dst, size): byte copy. */
++void CpuCopy8(const void *src, void *dst, u32 size)
++{
++    memmove(hp<u8>(dst), hp<const u8>(src), size);
++}
++
++/* MI_SwapWord(value, addr) and func_0206dab4(value, lock): the `swp`
++   instruction -- store value, return the old word. One game thread runs at a
++   time on the host, so a plain exchange is atomic enough. */
++u32 MI_SwapWord(u32 value, volatile u32 *addr)
++{
++    volatile u32 *a = hp<volatile u32>((const void *)addr);
++    u32 old = *a;
++    *a = value;
++    return old;
++}
++u32 func_0206dab4(u32 value, void *lock) { return MI_SwapWord(value, (volatile u32 *)lock); }
++
++/* MIi_UncompressBackward(bottom): the BLZ decoder overlays use, in place.
++   The host loads no overlay code, so nothing should call it. */
++void MIi_UncompressBackward(void *) { host_trap("MIi_UncompressBackward"); }
++
++// ---- matrices (src/unnamed/arm9/0205/func_0205*.c) -------------------------
++
++/* func_020527e8(m, sx, sy, sz): 4x3 fx32 scale matrix. */
++void func_020527e8(s32 *m, s32 sx, s32 sy, s32 sz)
++{
++    memset(m, 0, 48);
++    m[0] = sx; m[4] = sy; m[8] = sz;
++}
++/* func_02052800 / func_02052820 / (func_0205283c): 4x3 rotation about X / Y
++   (/ Z) from (sin, cos), NitroSDK MTX_Rot?43_ layout. */
++void func_02052800(s32 *m, s32 s, s32 c)
++{
++    memset(m, 0, 48);
++    m[0] = 0x1000; m[4] = c; m[5] = s; m[7] = -s; m[8] = c;
++}
++void func_02052820(s32 *m, s32 s, s32 c)
++{
++    memset(m, 0, 48);
++    m[0] = c; m[2] = -s; m[4] = 0x1000; m[6] = s; m[8] = c;
++}
++
++/* func_0205283c: the Z rotation, {c,s,0},{-s,c,0},{0,0,1} */
++void func_0205283c(s32 *m, s32 s, s32 c)
++{
++    memset(m, 0, 48);
++    m[0] = c; m[1] = s; m[3] = -s; m[4] = c; m[8] = 0x1000;
++}
++/* Matrix4x3_LoadIdentity / Matrix3x3_LoadIdentity / func_02052ec8 (4x4) */
++void Matrix4x3_LoadIdentity(s32 *m)
++{
++    memset(m, 0, 48);
++    m[0] = m[4] = m[8] = 0x1000;
++}
++void Matrix3x3_LoadIdentity(s32 *m)
++{
++    memset(m, 0, 36);
++    m[0] = m[4] = m[8] = 0x1000;
++}
++void func_02052ec8(s32 *m)
++{
++    memset(m, 0, 64);
++    m[0] = m[5] = m[10] = m[15] = 0x1000;
++}
++/* Matrix3x3_SetRotationZ(m, s, c): {c,s,0},{-s,c,0},{0,0,1} */
++void Matrix3x3_SetRotationZ(s32 *m, s32 s, s32 c)
++{
++    m[0] = c; m[1] = s; m[2] = 0;
++    m[3] = -s; m[4] = c; m[5] = 0;
++    m[6] = 0; m[7] = 0; m[8] = 0x1000;
++}
++/* MTX_RotY33_(m, s, c): {c,0,-s},{0,1,0},{s,0,c} */
++void MTX_RotY33_(s32 *m, s32 s, s32 c)
++{
++    m[0] = c; m[1] = 0; m[2] = -s;
++    m[3] = 0; m[4] = 0x1000; m[5] = 0;
++    m[6] = s; m[7] = 0; m[8] = c;
++}
++/* func_02052514(a, b): the 3x3 at `a` widened into a 4x4 at `b` (each row
++   gains a 0, then {0,0,0,1}). The asm reads r0 and writes r1, whatever the
++   parameter names say. */
++void func_02052514(const s32 *a, s32 *b)
++{
++    for (int r = 0; r < 3; ++r) {
++        b[r * 4 + 0] = a[r * 3 + 0];
++        b[r * 4 + 1] = a[r * 3 + 1];
++        b[r * 4 + 2] = a[r * 3 + 2];
++        b[r * 4 + 3] = 0;
++    }
++    b[12] = 0; b[13] = 0; b[14] = 0; b[15] = 0x1000;
++}
++/* Copy32Bytes(src, dst): 32 bytes, word by word */
++void Copy32Bytes(const u32 *src, u32 *dst)
++{
++    const u32 *s = hp<const u32>(src);
++    u32 *d = hp<u32>(dst);
++    for (int i = 0; i < 8; ++i) d[i] = s[i];
++}
++
++/* func_02071974 / func_02071988: the IS-NITRO debugger console (semihosting
++   SWI 0x123456: write a string, read a char). No debugger on the host. */
++void func_02071974(const unsigned char *) {}
++unsigned char func_02071988(void) { return 0; }
++
++// ---- the soft-float runtime the game calls by address (ITCM) --------------
++// Arguments and results are IEEE bit patterns in integer registers (the
++// DS has no FPU); the host computes natively.
++
++static inline float f_of(s32 b) { float f; memcpy(&f, &b, 4); return f; }
++static inline s32 b_of(float f) { s32 b; memcpy(&b, &f, 4); return b; }
++
++s32 func_01ff9378(s32 a, s32 b) { return b_of(f_of(a) + f_of(b)); }        /* _fadd */
++s32 func_01ffa594(s32 a, s32 b) { return b_of(f_of(a) - f_of(b)); }        /* _fsub */
++s32 func_01ffa344(s32 a) { return (s32)f_of(a); }                          /* _ffix */
++s32 func_01ffa4bc(s32 a) { return b_of((float)a); }                        /* _fflt */
++s32 func_01ff98f4(s32 a, s32 b) { return f_of(a) < f_of(b); }              /* float < */
++s32 func_01ff99a4(s32 a, s32 b) { return f_of(a) > f_of(b); }              /* float > */
++long long func_01ffaa34(long long a, long long b) { return b ? a / b : 0; } /* _ll_sdiv */
++double func_01ff8000(double a, double b) { return a + b; }                 /* _dadd */
++double func_01ff8e10(double a, double b) { return a - b; }                 /* _dsub */
++double func_01ff8708(double a, double b) { return a * b; }                 /* _dmul */
++int func_01ff9d40(double a, double b) { return a == b; }                   /* _deq */
++int func_01ff9e2c(double a, double b) { return a < b; }                    /* double < */
++unsigned long long func_01ff859c(double a)                                 /* _ll_ufrom_d */
++{
++    return a <= 0.0 ? 0ull : (unsigned long long)a;
++}
++
++// ---- 2. CPU state, interrupts, CP15 ---------------------------------------
++
++/* ARMProcessorMode: CPSR mode bits. The game runs in SYS mode (0x1f). */
++int ARMProcessorMode(void) { return 0x1f; }
++
++/* WaitByLoop / OS_SpinWait: burn time. The host's time is its own. */
++void WaitByLoop(s32) {}
++void OS_SpinWait(u32) {}
++
++/* func_0206d9cc / func_0206da18: the IS-debugger hooks' IRQ/FIQ-off entries;
++   no debugger on the host. */
++int func_0206d9cc(void) { return 0; }
++int func_0206da18(void) { return 0; }
++
++/* OSi_DoBoot: the reset path (OS_ResetSystem). Leaving the game is the
++   host's call. */
++void OSi_DoBoot(void) { host_trap("OSi_DoBoot (system reset)"); }
++
++/* OS spin-lock IDs (NitroSDK OS_GetLockID: 0x40..0x7f on the ARM9) and the
++   cartridge lock: one CPU, nothing to arbitrate with. */
++s32 OS_GetLockID(void)
++{
++    static s32 next = 0x40;
++    return next < 0x80 ? next++ : -3;
++}
++s32 OS_UnLockCartridge(u16) { return 0; }
++void OS_ReleaseLockID(u16) {}
++
++// The thread context switch. The game's five threads (sound, card, the boot
++// job, save, the stage loader) need host threads; see the header.
++void ARMSaveContext(void *) { host_trap("ARMSaveContext (DS thread switch)"); }
++void ARMRestoreContext(void *) { host_trap("ARMRestoreContext (DS thread switch)"); }
++void func_02058568(void *, u32, u32) { host_trap("OS_InitContext (DS thread create)"); }
++
++/* OSi_EnterTimerCallback / OSi_AlarmHandler: the OS timer service. Not hosted
++   yet (the game arms alarms from its card/sound paths). */
++void OSi_EnterTimerCallback(u32, u32, u32) { host_trap("OSi_EnterTimerCallback"); }
++void OSi_AlarmHandler(void *) { host_trap("OSi_AlarmHandler"); }
++
++}  // extern "C"
++
++namespace IRQ {
++/* Both masks at once: the host has no FIQ, so these are the IRQ pair. */
++u32 DisableAll() { return ::ntr::rt_irq_disable(); }
++u32 RestoreAll(u32 prev) { return ::ntr::rt_irq_restore(prev); }
++void SetIRQState(bool on) { if (on) ::ntr::rt_irq_enable(); else ::ntr::rt_irq_disable(); }
++void SetFIQState(bool) {}
++/* IE = mask under IME = 0, returning the old IE (src/engine/os/OS_Interrupt.cpp). */
++u32 SetIRQs(u32 mask)
++{
++    u16 ime = NTR_MMIO(u16, 0x04000208);
++    NTR_MMIO(u16, 0x04000208) = 0;
++    u32 old = NTR_MMIO(u32, 0x04000210);
++    NTR_MMIO(u32, 0x04000210) = mask;
++    NTR_MMIO(u16, 0x04000208) = ime;
++    return old;
++}
++}  // namespace IRQ
++
++namespace CP15 {
++void EnableDTCM(void) {}
++/* Where the DS maps its data TCM; DS addresses stay DS addresses on the host. */
++unsigned int GetDTCMBaseAddress(void) { return 0x023C0000u; }
++/* Wait for an interrupt: give the frame loop a turn. */
++void WaitForInterrupt(void) { ::ntr::rt_vblank_wait(); }
++}  // namespace CP15
+diff --git a/port/vita/game_init.ld b/port/vita/game_init.ld
+new file mode 100644
+index 0000000..7781a07
+--- /dev/null
++++ b/port/vita/game_init.ld
+@@ -0,0 +1,19 @@
++/* The game's C++ static initializers (the DS's __sinit_* per TU) are pulled out
++ * of .init_array, so the C runtime does not run them before main. On the DS
++ * the ARM9's run at boot and each overlay's when FS_LoadOverlay brings it in,
++ * after the heap and the file system exist; run before main they would ask
++ * for assets that are not loaded yet. The port runs them itself, from
++ * __sm64ds_game_init_start to __sm64ds_game_init_end.
++ *
++ * Matched by object path: every object built from src/ (or its host copy
++ * under host-src/src/) -- the port's own HAL objects keep normal C++ init. */
++SECTIONS
++{
++    .sm64ds_game_init : ALIGN(4)
++    {
++        PROVIDE_HIDDEN(__sm64ds_game_init_start = .);
++        KEEP(*/src/*(.init_array .init_array.* .ctors .ctors.*))
++        PROVIDE_HIDDEN(__sm64ds_game_init_end = .);
++    }
++}
++INSERT BEFORE .init_array;
+diff --git a/port/vita/host_aliases.ld b/port/vita/host_aliases.ld
+new file mode 100644
+index 0000000..e32e0f3
+--- /dev/null
++++ b/port/vita/host_aliases.ld
+@@ -0,0 +1,10 @@
++/* Hand-checked aliases for the full-game GCC link, appended to the generated
++ * romimage_alias.ld. Each names a method the source declares but the ROM never
++ * defined under that name, and the symbol whose code the ROM's vtable slot
++ * actually holds.
++ *
++ * daDonketu_c::Render / ::CleanupResources: daDonketu_c redeclares them, but
++ * its vtable slots 9 and 3 hold daOts_c's (notes/rtti-reconciliation.md
++ * sections 8-9: the config names were misattributed to the child). */
++PROVIDE(_ZN11daDonketu_c6RenderEv = _ZN7daOts_c6RenderEv);
++PROVIDE(_ZN11daDonketu_c16CleanupResourcesEv = _ZN7daOts_c16CleanupResourcesEv);
+diff --git a/port/vita/hostexterns_files.txt b/port/vita/hostexterns_files.txt
+new file mode 100644
+index 0000000..480e607
+--- /dev/null
++++ b/port/vita/hostexterns_files.txt
+@@ -0,0 +1,110 @@
++# TUs whose host copy goes through port/tools/hostexterns.py (GCC builds).
++# Each fails to compile under g++ as written -- declarations of one global
++# with different types, mwccarm-only spellings -- and compiles after it.
++# Regenerate by compiling all of src/ (port/vita, SM64DS_FULL_PROBE) and
++# listing the C/C++ TUs that fail.
++src/engine/pxi/PXI_Fifo.cpp
++src/engine/sound/SoundEngine.cpp
++src/engine/view/d_camera.cpp
++src/game/actors/d_a_bmb.cpp
++src/game/actors/d_a_bombking.cpp
++src/game/actors/d_a_btt_bk.cpp
++src/game/actors/d_a_c_jugem.cpp
++src/game/actors/d_a_coin.cpp
++src/game/actors/d_a_demo.cpp
++src/game/actors/d_a_dossy.cpp
++src/game/actors/d_a_gmch.cpp
++src/game/actors/d_a_krb.cpp
++src/game/actors/d_a_linelift2.cpp
++src/game/actors/d_a_mip.cpp
++src/game/actors/d_a_mky.cpp
++src/game/actors/d_a_obj_switch.cpp
++src/game/actors/d_a_onms.cpp
++src/game/actors/d_a_propeller_heyho.cpp
++src/game/player/Player.cpp
++src/minigames/d_s_mg_luigi.cpp
++src/minigames/d_s_mg_panel.cpp
++src/minigames/unit020b2c84.cpp
++src/minigames/unit020cd744.cpp
++src/unnamed/arm9/0201/func_020199a4.c
++# TUs holding hand-written ARM asm functions: the host copy drops those
++# (port/vita/game_host.cpp provides each natively) and keeps the C.
++src/minigames/d_s_mg_smartball.cpp
++src/ARMRestoreContext.c
++src/ARMSaveContext.c
++src/BitUnPack.c
++src/Copy48BytesFixed.c
++src/CpuFastSet.c
++src/CpuSet.c
++src/DecompressLZ16.c
++src/Div.c
++src/GetCRC16.c
++src/Halt.c
++src/HuffUnCompReadByCallback.c
++src/IRQ3.cpp
++src/IRQHandler.cpp
++src/IntrWait.c
++src/IsDebugger.c
++src/LZ77UnCompReadByCallbackWrite16bit.c
++src/LZ77UnCompReadNormalWrite8bit.c
++src/MI_SwapWord.c
++src/MIi_UncompressBackward.c
++src/MTX_RotY33_.c
++src/Matrix3x3_LoadIdentity.c
++src/Matrix3x3_SetRotationZ.c
++src/Matrix4x3_LoadIdentity.c
++src/Mod.c
++src/OS_SpinWait.c
++src/OSi_DoBoot.c
++src/RLUnCompReadByCallbackWrite16bit.c
++src/RLUnCompReadNormalWrite8bit.c
++src/SoftReset.c
++src/Sqrt.c
++src/VBlankIntrWait.c
++src/WaitByLoop.c
++src/__fp_status.c
++src/__ieee_status.c
++src/__rethrow.c
++src/_dadd.c
++src/_dmul.c
++src/_dsub.c
++src/_fadd.c
++src/_ffix.c
++src/_fflt.c
++src/_ffltu.c
++src/_fp_init.c
++src/_fsub.c
++src/_ll_sdiv.c
++src/_ll_udiv.c
++src/_ll_ufrom_d.c
++src/_s32_div_f.c
++src/_start.c
++src/_u32_div_f.c
++src/_ull_mod.c
++src/cstd4.cpp
++src/do_autoload.c
++src/engine/cp15/CP15.cpp
++src/engine/cp15/CP154.cpp
++src/engine/cp15/CP15_MPUDataRegion1.cpp
++src/engine/cp15/CP15_ProtectionUnit.cpp
++src/engine/cp15/CP15_TCM.cpp
++src/engine/mi/MI_Memory.c
++src/engine/os/OS_SpinLock.cpp
++src/init_cp15.c
++src/unnamed/arm9/01ff/func_01ff97d8.c
++src/unnamed/arm9/0205/func_02052514.c
++src/unnamed/arm9/0205/func_020527e8.c
++src/unnamed/arm9/0205/func_02052800.c
++src/unnamed/arm9/0205/func_02052820.c
++src/unnamed/arm9/0205/func_0205283c.c
++src/unnamed/arm9/0205/func_02052ec8.c
++src/unnamed/arm9/0205/func_020553c0.c
++src/unnamed/arm9/0205/func_02058568.c
++src/unnamed/arm9/0205/func_02059d98.c
++src/unnamed/arm9/0206/func_0206d9cc.cpp
++src/unnamed/arm9/0206/func_0206da18.cpp
++src/unnamed/arm9/0207/func_02071790.c
++src/unnamed/arm9/0207/func_02071974.c
++src/unnamed/arm9/0207/func_02071988.c
++src/unnamed/arm9/0207/func_0207199c.c
++src/game/actors/d_a_kpa3_bg.cpp
+diff --git a/port/vita/probe/probe_main.cpp b/port/vita/probe/probe_main.cpp
+new file mode 100644
+index 0000000..88f26af
+--- /dev/null
++++ b/port/vita/probe/probe_main.cpp
+@@ -0,0 +1,3 @@
++// Link-closure probe: the whole of src/ behind the game's own entry point.
++extern "C" void NitroMain(void);
++int main(void) { NitroMain(); return 0; }
+diff --git a/port/vita/slice_full.txt b/port/vita/slice_full.txt
+new file mode 100644
+index 0000000..f298c8d
+--- /dev/null
++++ b/port/vita/slice_full.txt
+@@ -0,0 +1,1601 @@
++# The full game for GCC builds (gate 10 on): every src/ TU except the five whose
++# job the host does (the C++ runtime typeinfo/terminate, the DMA transfer
++# pair the ntr layer owns, func_02018a24 = port/hal/fs.cpp).
++src/ARMMathLoadState.c
++src/ARMMathSaveState.c
++src/ARMRestoreContext.c
++src/ARMSaveContext.c
++src/AddVec3.c
++src/AngleDiff.c
++src/ApproachAngle.cpp
++src/AutoloadCallback.c
++src/BitUnPack.c
++src/CARD_GetBackupTotalSize.c
++src/CARD_GetCurrentBackupType.c
++src/CARD_IdentifyBackup.cpp
++src/CARD_Init.c
++src/CARD_WaitRomAsync.c
++src/CARDi_EndTask.cpp
++src/CARDi_OnFifoRecv.c
++src/CARDi_OnReadCard.cpp
++src/CARDi_ReadCard.c
++src/CARDi_ReadEnd.cpp
++src/CARDi_ReadFromCache.c
++src/CARDi_ReadRom.cpp
++src/CARDi_ReadRomSyncCore.c
++src/CARDi_Request.cpp
++src/CARDi_SetCardDma.c
++src/CARDi_SetRomOp.c
++src/CARDi_TaskThread.cpp
++src/CARDi_TryReadCardDma.cpp
++src/Copy48BytesFixed.c
++src/CpuFastSet.c
++src/CpuSet.c
++src/Crash.cpp
++src/CrossVec3.c
++src/DGT_Hash2CalcHmac.c
++src/Deallocate.cpp
++src/DecIfAbove0_Byte.c
++src/DecIfAbove0_Short.c
++src/DecompressLZ16.c
++src/Div.c
++src/DotVec3.c
++src/Enable3dEngines.c
++src/FS_CloseFile.c
++src/FS_Init.c
++src/FS_InitFile.c
++src/FS_LoadOverlay.c
++src/FS_OpenFileDirect.c
++src/FS_ReadFile.c
++src/FSi_AppendToList.c
++src/FSi_CutFromList.c
++src/FSi_FindPath.c
++src/Geometry_MatrixMultiply3x3.c
++src/GetActorDebugName.c
++src/GetAngleToCamera.c
++src/GetCRC16.c
++src/GetControllerMode.c
++src/GetLanguageIndex.c
++src/GetLevelPart.c
++src/GetOwnerLanguage.c
++src/GetPlayerFlagByte.c
++src/GetSceneOverlayID.c
++src/GetSoundMode.c
++src/GetStageDebugName.c
++src/Halt.c
++src/HuffUnCompReadByCallback.c
++src/IRQ2.cpp
++src/IRQ3.cpp
++src/IRQHandler.cpp
++src/InitCrashScreen.cpp
++src/IntrWait.c
++src/InvMat4x3.cpp
++src/IsDebugger.c
++src/IsMinigameActorID.c
++src/IsPlayerWarping.c
++src/KuppaScript.cpp
++src/LZ77UnCompReadByCallbackWrite16bit.c
++src/LZ77UnCompReadNormalWrite8bit.c
++src/LenVec3.c
++src/LoadArchive.c
++src/LoadCompressedFileAt.c
++src/LoadDebugFont.cpp
++src/LoadFile.c
++src/LoadFileAt.c
++src/LoadFont.cpp
++src/LoadOverlay.c
++src/LoadTextNarcs.c
++src/MI_SendGXCommand.c
++src/MI_SetWramBank.c
++src/MI_SwapWord.c
++src/MIi_UncompressBackward.c
++src/MTX_Rot22_.c
++src/MTX_RotX33_.c
++src/MTX_RotY33_.c
++src/Math_Function_0203b0fc.c
++src/Math_Function_0203b14c.c
++src/Matrix3x3_FromQuaternion.c
++src/Matrix3x3_LoadIdentity.c
++src/Matrix3x3_SetRotationZ.c
++src/Matrix4x3_ApplyInPlaceToRotationX.c
++src/Matrix4x3_ApplyInPlaceToRotationXYZExt.c
++src/Matrix4x3_ApplyInPlaceToRotationY.c
++src/Matrix4x3_ApplyInPlaceToRotationZ.c
++src/Matrix4x3_ApplyInPlaceToRotationZXYExt.c
++src/Matrix4x3_ApplyInPlaceToScale.c
++src/Matrix4x3_ApplyInPlaceToTranslation.c
++src/Matrix4x3_FromQuaternion.c
++src/Matrix4x3_FromRotationX.c
++src/Matrix4x3_FromRotationXYZExt.c
++src/Matrix4x3_FromRotationY.c
++src/Matrix4x3_FromRotationZ.c
++src/Matrix4x3_FromRotationZXYExt.c
++src/Matrix4x3_FromTranslation.c
++src/Matrix4x3_LoadIdentity.c
++src/Message.cpp
++src/Message2.cpp
++src/Message3.cpp
++src/Mod.c
++src/MulMat3x3Mat3x3.c
++src/MulMat4x3Mat4x3.c
++src/MulVec3Mat3x3.c
++src/MulVec3Mat4x3.c
++src/NitroMain.cpp
++src/NitroStartUp.cpp
++src/NoOpDestructor.c
++src/NormalizeVec3.c
++src/NormalizeVec3IfNonZero.c
++src/NullDestructor_0203d47c.c
++src/OSReadROMArea.c
++src/OS_Init.cpp
++src/OS_InitVAlarm.cpp
++src/OS_SpinWait.c
++src/OSi_DoBoot.c
++src/OSi_ReloadRomData.cpp
++src/OSi_SetTimerReserved.c
++src/PXI_Init.c
++src/Quaternion_FromVector3.cpp
++src/Quaternion_Multiply.c
++src/Quaternion_Normalize.c
++src/Quaternion_SLerp.c
++src/RLUnCompReadByCallbackWrite16bit.c
++src/RLUnCompReadNormalWrite8bit.c
++src/RandomIntInternal.c
++src/ReadSignedVarInt.c
++src/ResetCrashScreen.cpp
++src/SND_CalcChannelVolume.c
++src/SND_Init.c
++src/SetBg0Offset.c
++src/SetBg1Offset.c
++src/SetBg2Offset.c
++src/SetBg3Offset.c
++src/SetNumPlayers.c
++src/SetSoundMode.c
++src/SetSubBg0Offset.c
++src/SetSubBg1Offset.c
++src/SetSubBg2Offset.c
++src/SetSubBg3Offset.c
++src/SharedFilePtr.cpp
++src/ShowCrashScreen.cpp
++src/SoftReset.c
++src/Sprite_SetAnimation.c
++src/Sqrt.c
++src/SubVec3.c
++src/SublevelToLevel.c
++src/TP_CalcCalibrateParam.cpp
++src/TP_CheckError.c
++src/TP_GetCalibratedPoint.c
++src/TP_GetCalibratedResult.c
++src/TP_GetLatestIndexInAuto.c
++src/TP_GetUserInfo.c
++src/TP_Init.c
++src/TP_RequestAutoSamplingStartAsync.cpp
++src/TP_RequestSamplingAsync.cpp
++src/TP_RequestSetStabilityAsync.cpp
++src/TP_SetCalibrateParam.cpp
++src/TP_WaitBusy.c
++src/TP_WaitCalibratedResult.c
++src/TPi_TpCallback.c
++src/Timer.cpp
++src/TurnBacklightOff.c
++src/TurnBacklightOn.c
++src/UnloadArchive.c
++src/UnloadArchives.c
++src/UnloadOverlay.c
++src/VBlankIntrWait.c
++src/Vec2_Len.cpp
++src/Vec2_Sub.c
++src/Vec3_Add.c
++src/Vec3_ApproachHorz.cpp
++src/Vec3_Asr.c
++src/Vec3_AsrInPlace.c
++src/Vec3_Dist.cpp
++src/Vec3_DivScalarInPlace.cpp
++src/Vec3_Equal.c
++src/Vec3_HorzAngle.cpp
++src/Vec3_HorzDist.cpp
++src/Vec3_HorzLen.cpp
++src/Vec3_Lsl.c
++src/Vec3_LslInPlace.c
++src/Vec3_MulScalar.c
++src/Vec3_MulScalarInPlace.c
++src/Vec3_RotateYAndTranslate.c
++src/Vec3_Sub.c
++src/Vec3_VertAngle.cpp
++src/WM_CheckStateEx.cpp
++src/WM_Disable.c
++src/WM_Disconnect.cpp
++src/WM_Enable.c
++src/WM_End.c
++src/WM_Finish.c
++src/WM_GetAllowedChannel.cpp
++src/WM_GetLinkLevel.cpp
++src/WM_GetMPReceiveBufferSize.cpp
++src/WM_GetMPSendBufferSize.cpp
++src/WM_GetSystemWork.c
++src/WM_Init.cpp
++src/WM_Initialize.c
++src/WM_PowerOff.c
++src/WM_PowerOn.c
++src/WM_ReadMPData.cpp
++src/WM_ReadStatus.cpp
++src/WM_Reset.c
++src/WM_SendCommand.cpp
++src/WM_SetCallbackTable.c
++src/WM_SetIndCallback.cpp
++src/WM_SetMPDataToPort.c
++src/WM_SetMPDataToPortEx.cpp
++src/WM_SetParentParameter.cpp
++src/WM_SetPortCallback.cpp
++src/WM_StartConnect.cpp
++src/WM_StartMPEx.cpp
++src/WM_StartParent.c
++src/WM_StartScan.cpp
++src/WMi_CheckIdle.cpp
++src/WaitByLoop.c
++src/WarpPlayer.c
++src/Wireless_Reset.c
++src/WmCheckParentParameter.c
++src/WmClearFifoRecvFlag.cpp
++src/__call_static_initializers.c
++src/__close_console.c
++src/__cxa_vec_delete.c
++src/__destroy_global_chain.c
++src/__end__catch.c
++src/__fp_status.c
++src/__ieee_status.c
++src/__read_console.c
++src/__register_global_object.c
++src/__rethrow.c
++src/__throw_catch_compare.c
++src/__write_console.c
++src/_dadd.c
++src/_dmul.c
++src/_dsub.c
++src/_fadd.c
++src/_ffix.c
++src/_fflt.c
++src/_ffltu.c
++src/_fp_init.c
++src/_fsub.c
++src/_ll_sdiv.c
++src/_ll_udiv.c
++src/_ll_ufrom_d.c
++src/_s32_div_f.c
++src/_start.c
++src/_u32_div_f.c
++src/_ull_mod.c
++src/copysign.c
++src/cstd.cpp
++src/cstd3.cpp
++src/cstd4.cpp
++src/cstd6.cpp
++src/cstd_atan2.cpp
++src/cstd_sqrt.cpp
++src/do_autoload.c
++src/double2hex.c
++src/engine/animation/dExtFrameCtrl_c_UpdateFileOffsets.cpp
++src/engine/card/CARD_Common.cpp
++src/engine/card/CARD_PullOut.cpp
++src/engine/collision/d_bg_ch.cpp
++src/engine/collision/d_bg_ch_actr.cpp
++src/engine/collision/d_bg_ch_gnd.cpp
++src/engine/collision/d_bg_ch_lin.cpp
++src/engine/collision/d_bg_ch_sph_crr.cpp
++src/engine/collision/d_bg_ch_sph_crr_query.cpp
++src/engine/collision/d_bg_w.cpp
++src/engine/collision/d_bg_w_kc.cpp
++src/engine/collision/d_bg_w_kc_itcm.cpp
++src/engine/collision/d_bg_w_kc_mbg.cpp
++src/engine/collision/d_bg_w_kc_mbg_scl_y.cpp
++src/engine/collision/d_cc.cpp
++src/engine/collision/d_cc_ac.cpp
++src/engine/collision/d_cc_pos.cpp
++src/engine/collision/d_clipper.cpp
++src/engine/collision/d_m3d_g_lin.cpp
++src/engine/collision/d_m3d_g_sph.cpp
++src/engine/cp15/CP15.cpp
++src/engine/cp15/CP154.cpp
++src/engine/cp15/CP15_MPUDataRegion1.cpp
++src/engine/cp15/CP15_ProtectionUnit.cpp
++src/engine/cp15/CP15_TCM.cpp
++src/engine/ctrdg/CTRDG_Common.cpp
++src/engine/ctrdg/CTRDG_Proc.cpp
++src/engine/fs/FS_Archive.cpp
++src/engine/fs/FS_Command.cpp
++src/engine/fs/FS_CommandDefault.cpp
++src/engine/fs/FS_Overlay.cpp
++src/engine/fs/FS_Rom.cpp
++src/engine/graph/d_graph_c_callback.cpp
++src/engine/gx/G2.cpp
++src/engine/gx/G2x.cpp
++src/engine/gx/G3X.cpp
++src/engine/gx/G3i.cpp
++src/engine/gx/GX.cpp
++src/engine/gx/GXS.cpp
++src/engine/gx/GX_Init.cpp
++src/engine/gx/GX_VramCnt.cpp
++src/engine/heap/ExpandingHeapAllocator.cpp
++src/engine/heap/Heap.cpp
++src/engine/heap/NestedHeapIterator.cpp
++src/engine/heap/SolidHeapAllocator.cpp
++src/engine/isd/isdoverlay.cpp
++src/engine/mb/MB_GameInfo.c
++src/engine/mb/MB_Parent.cpp
++src/engine/mb/MB_WmBase.cpp
++src/engine/mi/MI_Dma.cpp
++src/engine/mi/MI_DmaGXCommand.cpp
++src/engine/mi/MI_Memory.c
++src/engine/model/Model4.cpp
++src/engine/model/ModelComponents.cpp
++src/engine/model/dExtAnmTexPat_c_UpdateFileOffsets.cpp
++src/engine/model/d_ext_model.cpp
++src/engine/oam/OAM.cpp
++src/engine/os/OS_Alarm.cpp
++src/engine/os/OS_Alloc.cpp
++src/engine/os/OS_Arena.cpp
++src/engine/os/OS_Emulator.cpp
++src/engine/os/OS_Exception.cpp
++src/engine/os/OS_Interrupt.cpp
++src/engine/os/OS_IrqTable.cpp
++src/engine/os/OS_Message.cpp
++src/engine/os/OS_Mutex.cpp
++src/engine/os/OS_OwnerInfo.c
++src/engine/os/OS_Printf.c
++src/engine/os/OS_Reset.c
++src/engine/os/OS_SpinLock.cpp
++src/engine/os/OS_Thread.cpp
++src/engine/os/OS_Tick.cpp
++src/engine/particle/Particle.cpp
++src/engine/particle/Particle_Behavior.cpp
++src/engine/particle/Particle_Manager.cpp
++src/engine/particle/Particle_SysTracker_Contents.cpp
++src/engine/particle/d_pa.cpp
++src/engine/path/PathPtr.cpp
++src/engine/pxi/PXI_Fifo.cpp
++src/engine/save/SaveData.cpp
++src/engine/save/SaveData2.cpp
++src/engine/snd/SND_Alarm.cpp
++src/engine/snd/SND_Bank.cpp
++src/engine/snd/SND_Command.cpp
++src/engine/snd/SND_Interface.cpp
++src/engine/snd/SND_Work.cpp
++src/engine/sound/Sound.cpp
++src/engine/sound/Sound2.cpp
++src/engine/sound/SoundEngine.cpp
++src/engine/spi/PM.cpp
++src/engine/view/Graphics3D.cpp
++src/engine/view/d_camera.cpp
++src/engine/view/d_camera_dtor.cpp
++src/engine/view/d_view.cpp
++src/engine/wm/WM_Ds.cpp
++src/engine/wm/WM_Etc.cpp
++src/fListNode.cpp
++src/fabs.c
++src/float2str.c
++src/frexp.c
++src/func_02013f4c.cpp
++src/func_0201a2f8.cpp
++src/func_0203b20c.c
++src/func_0203b244.c
++src/func_0203b27c.c
++src/func_0203b2ec.c
++src/func_0204547c.cpp
++src/func_020458a8.c
++src/func_020471ac.cpp
++src/func_02048234.c
++src/func_ov007_020c0078.cpp
++src/game/actors/StarCamera_Spawn.cpp
++src/game/actors/d_a_1up.cpp
++src/game/actors/d_a_b_donketu.cpp
++src/game/actors/d_a_bakubaku.cpp
++src/game/actors/d_a_bar.cpp
++src/game/actors/d_a_basabasa.cpp
++src/game/actors/d_a_bbl.cpp
++src/game/actors/d_a_bg_snm_bdy.cpp
++src/game/actors/d_a_bg_snm_hed.cpp
++src/game/actors/d_a_bg_snwmn.cpp
++src/game/actors/d_a_bmb.cpp
++src/game/actors/d_a_bombking.cpp
++src/game/actors/d_a_book.cpp
++src/game/actors/d_a_brq.cpp
++src/game/actors/d_a_btfly.cpp
++src/game/actors/d_a_btn.cpp
++src/game/actors/d_a_btt_bk.cpp
++src/game/actors/d_a_c_jugem.cpp
++src/game/actors/d_a_cam_tag.cpp
++src/game/actors/d_a_ch_room.cpp
++src/game/actors/d_a_ch_scene.cpp
++src/game/actors/d_a_chair.cpp
++src/game/actors/d_a_choropu.cpp
++src/game/actors/d_a_cnn.cpp
++src/game/actors/d_a_coin.cpp
++src/game/actors/d_a_demo.cpp
++src/game/actors/d_a_dgr.cpp
++src/game/actors/d_a_dkk.cpp
++src/game/actors/d_a_donketu.cpp
++src/game/actors/d_a_door.cpp
++src/game/actors/d_a_dossy.cpp
++src/game/actors/d_a_dp_lift.cpp
++src/game/actors/d_a_dsn.cpp
++src/game/actors/d_a_dsn_base.cpp
++src/game/actors/d_a_e_switch.cpp
++src/game/actors/d_a_ey_bm.cpp
++src/game/actors/d_a_eykn.cpp
++src/game/actors/d_a_f_pkn.cpp
++src/game/actors/d_a_f_pkn_ball.cpp
++src/game/actors/d_a_f_ring.cpp
++src/game/actors/d_a_feather.cpp
++src/game/actors/d_a_fish.cpp
++src/game/actors/d_a_gmch.cpp
++src/game/actors/d_a_grock.cpp
++src/game/actors/d_a_hanachan.cpp
++src/game/actors/d_a_holhei.cpp
++src/game/actors/d_a_huwa.cpp
++src/game/actors/d_a_hyuhyu.cpp
++src/game/actors/d_a_i_donketu.cpp
++src/game/actors/d_a_ibl.cpp
++src/game/actors/d_a_iwante.cpp
++src/game/actors/d_a_jango.cpp
++src/game/actors/d_a_jgm.cpp
++src/game/actors/d_a_king_donketu.cpp
++src/game/actors/d_a_kinopio.cpp
++src/game/actors/d_a_kirai.cpp
++src/game/actors/d_a_klr.cpp
++src/game/actors/d_a_kp_fr.cpp
++src/game/actors/d_a_kpa.cpp
++src/game/actors/d_a_kpa2_bg.cpp
++src/game/actors/d_a_kpa3_bg.cpp
++src/game/actors/d_a_kpa_fire.cpp
++src/game/actors/d_a_krb.cpp
++src/game/actors/d_a_krpa.cpp
++src/game/actors/d_a_kuri_king.cpp
++src/game/actors/d_a_linelift2.cpp
++src/game/actors/d_a_luigi.cpp
++src/game/actors/d_a_manta.cpp
++src/game/actors/d_a_mc_flag.cpp
++src/game/actors/d_a_menbo.cpp
++src/game/actors/d_a_mip.cpp
++src/game/actors/d_a_mky.cpp
++src/game/actors/d_a_moray.cpp
++src/game/actors/d_a_mugen_bgm.cpp
++src/game/actors/d_a_nknk.cpp
++src/game/actors/d_a_obj1up_logo.cpp
++src/game/actors/d_a_obj_abuku.cpp
++src/game/actors/d_a_obj_b_swdoor.cpp
++src/game/actors/d_a_obj_bc_switch.cpp
++src/game/actors/d_a_obj_bk_billboard.cpp
++src/game/actors/d_a_obj_bk_botaosi.cpp
++src/game/actors/d_a_obj_bk_dossunbar.cpp
++src/game/actors/d_a_obj_bk_fall_block.cpp
++src/game/actors/d_a_obj_bk_kabe.cpp
++src/game/actors/d_a_obj_bk_killerdai.cpp
++src/game/actors/d_a_obj_bk_lift.cpp
++src/game/actors/d_a_obj_bk_rotebar.cpp
++src/game/actors/d_a_obj_bk_ukisima.cpp
++src/game/actors/d_a_obj_block_item_tag.cpp
++src/game/actors/d_a_obj_block_l.cpp
++src/game/actors/d_a_obj_block_s.cpp
++src/game/actors/d_a_obj_c0_switch.cpp
++src/game/actors/d_a_obj_c0_water.cpp
++src/game/actors/d_a_obj_c1_hikari.cpp
++src/game/actors/d_a_obj_c1_peach.cpp
++src/game/actors/d_a_obj_c1_trap.cpp
++src/game/actors/d_a_obj_cannon_shutter.cpp
++src/game/actors/d_a_obj_casket.cpp
++src/game/actors/d_a_obj_clock.cpp
++src/game/actors/d_a_obj_clock_huriko.cpp
++src/game/actors/d_a_obj_closet.cpp
++src/game/actors/d_a_obj_ct_kaitendai.cpp
++src/game/actors/d_a_obj_ct_mecha03.cpp
++src/game/actors/d_a_obj_ct_mecha04.cpp
++src/game/actors/d_a_obj_ct_mecha05.cpp
++src/game/actors/d_a_obj_ct_mecha08.cpp
++src/game/actors/d_a_obj_ct_mecha09.cpp
++src/game/actors/d_a_obj_ct_mecha10.cpp
++src/game/actors/d_a_obj_ct_mecha11.cpp
++src/game/actors/d_a_obj_ct_rotate_block.cpp
++src/game/actors/d_a_obj_cv_news_lift.cpp
++src/game/actors/d_a_obj_cv_shutter.cpp
++src/game/actors/d_a_obj_dl_pyramid.cpp
++src/game/actors/d_a_obj_dorifu.cpp
++src/game/actors/d_a_obj_dp_brock.cpp
++src/game/actors/d_a_obj_emm_log.cpp
++src/game/actors/d_a_obj_emm_yuka.cpp
++src/game/actors/d_a_obj_ewb_ice.cpp
++src/game/actors/d_a_obj_ewm_ice_block.cpp
++src/game/actors/d_a_obj_fall_block.cpp
++src/game/actors/d_a_obj_fire.cpp
++src/game/actors/d_a_obj_fl_amilift.cpp
++src/game/actors/d_a_obj_fl_block.cpp
++src/game/actors/d_a_obj_fl_coin.cpp
++src/game/actors/d_a_obj_fl_fall_block.cpp
++src/game/actors/d_a_obj_fl_gura.cpp
++src/game/actors/d_a_obj_fl_koma_d.cpp
++src/game/actors/d_a_obj_fl_koma_u.cpp
++src/game/actors/d_a_obj_fl_london.cpp
++src/game/actors/d_a_obj_fl_maruta.cpp
++src/game/actors/d_a_obj_fl_ring.cpp
++src/game/actors/d_a_obj_fl_seesaw.cpp
++src/game/actors/d_a_obj_fl_uki_ki.cpp
++src/game/actors/d_a_obj_fl_ukiyuka.cpp
++src/game/actors/d_a_obj_flamethrower.cpp
++src/game/actors/d_a_obj_float_board.cpp
++src/game/actors/d_a_obj_fm_battan.cpp
++src/game/actors/d_a_obj_guragura.cpp
++src/game/actors/d_a_obj_hatena_block.cpp
++src/game/actors/d_a_obj_hatena_switch.cpp
++src/game/actors/d_a_obj_heart.cpp
++src/game/actors/d_a_obj_hm_bskt.cpp
++src/game/actors/d_a_obj_hm_maruta.cpp
++src/game/actors/d_a_obj_hs_billboard.cpp
++src/game/actors/d_a_obj_ice_block.cpp
++src/game/actors/d_a_obj_ice_board.cpp
++src/game/actors/d_a_obj_kaitendai.cpp
++src/game/actors/d_a_obj_kanban.cpp
++src/game/actors/d_a_obj_kb1_billboard.cpp
++src/game/actors/d_a_obj_key.cpp
++src/game/actors/d_a_obj_ki_fune.cpp
++src/game/actors/d_a_obj_ki_hasira.cpp
++src/game/actors/d_a_obj_ki_ita.cpp
++src/game/actors/d_a_obj_kinoko_tag.cpp
++src/game/actors/d_a_obj_km1_dorifu.cpp
++src/game/actors/d_a_obj_km1_kuruma.cpp
++src/game/actors/d_a_obj_km1_kurumajiku.cpp
++src/game/actors/d_a_obj_km1_ukishima.cpp
++src/game/actors/d_a_obj_km2_agaru.cpp
++src/game/actors/d_a_obj_km2_ami_bou.cpp
++src/game/actors/d_a_obj_km2_fall_block.cpp
++src/game/actors/d_a_obj_km2_gura.cpp
++src/game/actors/d_a_obj_km2_nobiru.cpp
++src/game/actors/d_a_obj_km2_ukishima.cpp
++src/game/actors/d_a_obj_km3_dorifu.cpp
++src/game/actors/d_a_obj_km3_kaitendai.cpp
++src/game/actors/d_a_obj_km3_kuruma.cpp
++src/game/actors/d_a_obj_km3_kurumajiku.cpp
++src/game/actors/d_a_obj_ks_water.cpp
++src/game/actors/d_a_obj_kumo.cpp
++src/game/actors/d_a_obj_kuruma.cpp
++src/game/actors/d_a_obj_kurumajiku.cpp
++src/game/actors/d_a_obj_lava.cpp
++src/game/actors/d_a_obj_mario_cap.cpp
++src/game/actors/d_a_obj_maruta.cpp
++src/game/actors/d_a_obj_mc_metalnet.cpp
++src/game/actors/d_a_obj_mc_water.cpp
++src/game/actors/d_a_obj_mip_key.cpp
++src/game/actors/d_a_obj_number.cpp
++src/game/actors/d_a_obj_path_lift.cpp
++src/game/actors/d_a_obj_pile.cpp
++src/game/actors/d_a_obj_power_up_item.cpp
++src/game/actors/d_a_obj_pushblock.cpp
++src/game/actors/d_a_obj_rc_buranko.cpp
++src/game/actors/d_a_obj_rc_carpet.cpp
++src/game/actors/d_a_obj_rc_dorifu.cpp
++src/game/actors/d_a_obj_rc_guruguru.cpp
++src/game/actors/d_a_obj_rc_hane.cpp
++src/game/actors/d_a_obj_rc_kaitendai.cpp
++src/game/actors/d_a_obj_rc_tikuwa.cpp
++src/game/actors/d_a_obj_rotate_updown_lift.cpp
++src/game/actors/d_a_obj_seesaw.cpp
++src/game/actors/d_a_obj_shell.cpp
++src/game/actors/d_a_obj_simple_bg.cpp
++src/game/actors/d_a_obj_simple_lift.cpp
++src/game/actors/d_a_obj_sl_ice_block.cpp
++src/game/actors/d_a_obj_sm_lift.cpp
++src/game/actors/d_a_obj_swdoor.cpp
++src/game/actors/d_a_obj_switch.cpp
++src/game/actors/d_a_obj_tatefuda.cpp
++src/game/actors/d_a_obj_tbox.cpp
++src/game/actors/d_a_obj_td_futa.cpp
++src/game/actors/d_a_obj_td_water.cpp
++src/game/actors/d_a_obj_th_fall_block.cpp
++src/game/actors/d_a_obj_tt_futa.cpp
++src/game/actors/d_a_obj_tt_water.cpp
++src/game/actors/d_a_obj_ukiyuka.cpp
++src/game/actors/d_a_obj_wakame.cpp
++src/game/actors/d_a_obj_wanwan_shutter.cpp
++src/game/actors/d_a_obj_waterfall.cpp
++src/game/actors/d_a_obj_wc_mizu.cpp
++src/game/actors/d_a_obj_wc_obj01.cpp
++src/game/actors/d_a_obj_wc_obj02.cpp
++src/game/actors/d_a_obj_wc_obj03.cpp
++src/game/actors/d_a_obj_wc_obj04.cpp
++src/game/actors/d_a_obj_wc_obj05.cpp
++src/game/actors/d_a_obj_wc_obj06.cpp
++src/game/actors/d_a_obj_wc_obj07.cpp
++src/game/actors/d_a_obj_wl_koopa_shutter.cpp
++src/game/actors/d_a_obj_wl_polelift.cpp
++src/game/actors/d_a_obj_wl_submarine.cpp
++src/game/actors/d_a_obj_yajirusi.cpp
++src/game/actors/d_a_onms.cpp
++src/game/actors/d_a_ots.cpp
++src/game/actors/d_a_owl.cpp
++src/game/actors/d_a_peach.cpp
++src/game/actors/d_a_pg_bby.cpp
++src/game/actors/d_a_pg_dfdr.cpp
++src/game/actors/d_a_pg_mthr.cpp
++src/game/actors/d_a_pg_rcer.cpp
++src/game/actors/d_a_piano.cpp
++src/game/actors/d_a_pic_gate.cpp
++src/game/actors/d_a_pic_gate_methods.cpp
++src/game/actors/d_a_pkn.cpp
++src/game/actors/d_a_popoi.cpp
++src/game/actors/d_a_propeller_heyho.cpp
++src/game/actors/d_a_propeller_heyho_fire.cpp
++src/game/actors/d_a_pukupuku.cpp
++src/game/actors/d_a_r_flag.cpp
++src/game/actors/d_a_r_nk.cpp
++src/game/actors/d_a_red_bombhei.cpp
++src/game/actors/d_a_s_bird.cpp
++src/game/actors/d_a_s_coin.cpp
++src/game/actors/d_a_s_cre.cpp
++src/game/actors/d_a_sanbo.cpp
++src/game/actors/d_a_set_se.cpp
++src/game/actors/d_a_shark.cpp
++src/game/actors/d_a_shl.cpp
++src/game/actors/d_a_sld_mng.cpp
++src/game/actors/d_a_slide_box.cpp
++src/game/actors/d_a_snm_bth.cpp
++src/game/actors/d_a_snowball.cpp
++src/game/actors/d_a_snowman.cpp
++src/game/actors/d_a_sound_obj.cpp
++src/game/actors/d_a_spd.cpp
++src/game/actors/d_a_star.cpp
++src/game/actors/d_a_star_base.cpp
++src/game/actors/d_a_star_gate.cpp
++src/game/actors/d_a_star_silver_star.cpp
++src/game/actors/d_a_star_star.cpp
++src/game/actors/d_a_tgz.cpp
++src/game/actors/d_a_tor.cpp
++src/game/actors/d_a_tree.cpp
++src/game/actors/d_a_trs.cpp
++src/game/actors/d_a_trs_trap.cpp
++src/game/actors/d_a_trs_trap_classinits.cpp
++src/game/actors/d_a_udlift.cpp
++src/game/actors/d_a_wanwan.cpp
++src/game/actors/d_a_wanwan2.cpp
++src/game/actors/d_a_warpkun.cpp
++src/game/actors/d_a_water_hakidasi.cpp
++src/game/actors/d_a_water_ring.cpp
++src/game/actors/d_a_water_suikomi.cpp
++src/game/actors/d_a_water_tatumaki.cpp
++src/game/actors/d_a_wbm.cpp
++src/game/actors/d_a_yegg.cpp
++src/game/actors/d_a_yurei_mucho.cpp
++src/game/player/Player.cpp
++src/game/player/d_a_ply.cpp
++src/game/stages/LevelObjects.cpp
++src/game/stages/d_ent_obj.cpp
++src/game/stages/d_s_boot.cpp
++src/game/stages/d_s_boot_methods.cpp
++src/game/stages/d_s_dsmt.cpp
++src/game/stages/d_s_entry.cpp
++src/game/stages/d_s_entry_entry.cpp
++src/game/stages/d_s_entry_methods.cpp
++src/game/stages/d_s_game_over.cpp
++src/game/stages/d_s_mb.cpp
++src/game/stages/d_s_stage_methods.cpp
++src/game/stages/d_s_star_sel_methods.cpp
++src/game/stages/d_s_title.cpp
++src/game/stages/d_scene.cpp
++src/init_cp15.c
++src/ldexp.c
++src/lib/msl/ansi_fp.c
++src/lib/runtime/__cxa_vec_cleanup.cpp
++src/lib/runtime/__cxa_vec_ctor.cpp
++src/lib/runtime/__cxa_vec_new.cpp
++src/long2str.c
++src/longlong2str.c
++src/minigames/d_mg3d_esp_anim_set.cpp
++src/minigames/d_mg3d_heyho_obj_adapter.cpp
++src/minigames/d_mg_jump3d_mario.cpp
++src/minigames/d_mg_ps_opt.cpp
++src/minigames/d_mg_state.cpp
++src/minigames/d_mg_trmpln2_mario.cpp
++src/minigames/d_s_mg_amida.cpp
++src/minigames/d_s_mg_base.cpp
++src/minigames/d_s_mg_bomroom.cpp
++src/minigames/d_s_mg_bsc.cpp
++src/minigames/d_s_mg_card.cpp
++src/minigames/d_s_mg_coin.cpp
++src/minigames/d_s_mg_cup.cpp
++src/minigames/d_s_mg_curling.cpp
++src/minigames/d_s_mg_curling2.cpp
++src/minigames/d_s_mg_d3d_base.cpp
++src/minigames/d_s_mg_flower.cpp
++src/minigames/d_s_mg_hanachan.cpp
++src/minigames/d_s_mg_hanachan_methods.cpp
++src/minigames/d_s_mg_jump.cpp
++src/minigames/d_s_mg_jump2.cpp
++src/minigames/d_s_mg_jump_methods.cpp
++src/minigames/d_s_mg_luigi.cpp
++src/minigames/d_s_mg_m_carlo.cpp
++src/minigames/d_s_mg_m_carlo2.cpp
++src/minigames/d_s_mg_memory.cpp
++src/minigames/d_s_mg_memory2.cpp
++src/minigames/d_s_mg_pachinko.cpp
++src/minigames/d_s_mg_pachinko2.cpp
++src/minigames/d_s_mg_panel.cpp
++src/minigames/d_s_mg_roulette.cpp
++src/minigames/d_s_mg_roulette_methods.cpp
++src/minigames/d_s_mg_single3d_base.cpp
++src/minigames/d_s_mg_slots.cpp
++src/minigames/d_s_mg_smartball.cpp
++src/minigames/d_s_mg_snowball.cpp
++src/minigames/d_s_mg_sound.cpp
++src/minigames/d_s_mg_teresa.cpp
++src/minigames/d_s_mg_trampoline.cpp
++src/minigames/d_s_mg_trampoline2.cpp
++src/minigames/d_s_mini_gm.cpp
++src/minigames/unit020b2c84.cpp
++src/minigames/unit020b4aa4.cpp
++src/minigames/unit020bfec0.cpp
++src/minigames/unit020c8a30.cpp
++src/minigames/unit020cd744.cpp
++src/myFS_ReadFile.c
++src/nds_print.c
++src/nds_printf.c
++src/nds_printt.cpp
++src/nds_vprintf.c
++src/parse_format.c
++src/round_decimal.c
++src/runtime/actor/ActorBase.cpp
++src/runtime/actor/ActorBase_SceneNode.cpp
++src/runtime/actor/ActorDerived.cpp
++src/runtime/actor/d_actor.cpp
++src/runtime/actor/d_bg_actor.cpp
++src/runtime/actor/d_cap_enemy.cpp
++src/runtime/actor/d_cap_enemy_arm9.cpp
++src/runtime/actor/d_enemy_base.cpp
++src/runtime/actor/d_path_lift_actor.cpp
++src/runtime/filesystem/InitializeAssetHandleTable.c
++src/runtime/graphics/fader/d_fader.cpp
++src/runtime/graphics/fader/d_wipe.cpp
++src/ui/hud/CapIconMgr.cpp
++src/ui/hud/d_cap_icon.cpp
++src/ui/hud/d_map.cpp
++src/ui/hud/d_meter.cpp
++src/ui/hud/d_th_icon.cpp
++src/ui/menus/unit020b2764.cpp
++src/ui/menus/unit020b2cdc.cpp
++src/ui/menus/unit020b3edc.cpp
++src/ui/menus/unit020b413c.cpp
++src/ui/menus/unit020b6eb4.cpp
++src/ui/menus/unit020b7658.cpp
++src/ui/menus/unit020b797c.cpp
++src/ui/menus/unit020b8f50.cpp
++src/ui/menus/unit020bd9e4.cpp
++src/ui/menus/unit020be0dc.cpp
++src/ui/menus/unit020bed60.cpp
++src/ui/menus/unit020bf690.cpp
++src/ui/menus/unit020c1404.cpp
++src/ui/menus/unit020c1d78.cpp
++src/ui/menus/unit020c3ce4.cpp
++src/ui/menus/unit020c94a0.cpp
++src/ui/messages/_ZN7Message14SetTextGlobalsEv.cpp
++src/ui/messages/_ZN7Message8LoadTextEv.cpp
++src/unnamed/arm9/01ff/func_01ff97d8.c
++src/unnamed/arm9/0200/func_02005000.cpp
++src/unnamed/arm9/0200/func_02005060.cpp
++src/unnamed/arm9/0200/func_02005098.cpp
++src/unnamed/arm9/0200/func_020050dc.cpp
++src/unnamed/arm9/0200/func_02005110.cpp
++src/unnamed/arm9/0200/func_0200f13c.cpp
++src/unnamed/arm9/0200/func_0200f2cc.cpp
++src/unnamed/arm9/0200/func_0200f468.c
++src/unnamed/arm9/0201/func_02017e60.c
++src/unnamed/arm9/0201/func_02017e94.c
++src/unnamed/arm9/0201/func_02017fd0.cpp
++src/unnamed/arm9/0201/func_0201817c.c
++src/unnamed/arm9/0201/func_0201818c.cpp
++src/unnamed/arm9/0201/func_02018270.c
++src/unnamed/arm9/0201/func_020182bc.c
++src/unnamed/arm9/0201/func_0201834c.cpp
++src/unnamed/arm9/0201/func_02018434.c
++src/unnamed/arm9/0201/func_02018474.c
++src/unnamed/arm9/0201/func_020184e0.cpp
++src/unnamed/arm9/0201/func_02018568.c
++src/unnamed/arm9/0201/func_02018598.c
++src/unnamed/arm9/0201/func_020185c0.c
++src/unnamed/arm9/0201/func_020186c0.c
++src/unnamed/arm9/0201/func_02018770.c
++src/unnamed/arm9/0201/func_02018908.cpp
++src/unnamed/arm9/0201/func_02018934.cpp
++src/unnamed/arm9/0201/func_020189f0.c
++src/unnamed/arm9/0201/func_02018a40.c
++src/unnamed/arm9/0201/func_02018a58.cpp
++src/unnamed/arm9/0201/func_02018aa4.c
++src/unnamed/arm9/0201/func_02018ac4.c
++src/unnamed/arm9/0201/func_02018b64.c
++src/unnamed/arm9/0201/func_02018c00.c
++src/unnamed/arm9/0201/func_02018ec0.cpp
++src/unnamed/arm9/0201/func_02019018.c
++src/unnamed/arm9/0201/func_020190b8.c
++src/unnamed/arm9/0201/func_02019100.c
++src/unnamed/arm9/0201/func_02019144.cpp
++src/unnamed/arm9/0201/func_02019390.cpp
++src/unnamed/arm9/0201/func_02019404.cpp
++src/unnamed/arm9/0201/func_02019440.cpp
++src/unnamed/arm9/0201/func_020196cc.c
++src/unnamed/arm9/0201/func_020197b8.cpp
++src/unnamed/arm9/0201/func_020199a4.c
++src/unnamed/arm9/0201/func_02019dfc.c
++src/unnamed/arm9/0201/func_02019ebc.c
++src/unnamed/arm9/0201/func_02019ed0.c
++src/unnamed/arm9/0201/func_02019f10.cpp
++src/unnamed/arm9/0201/func_0201a03c.c
++src/unnamed/arm9/0201/func_0201a054.cpp
++src/unnamed/arm9/0201/func_0201a1bc.cpp
++src/unnamed/arm9/0201/func_0201a244.cpp
++src/unnamed/arm9/0201/func_0201a3e4.cpp
++src/unnamed/arm9/0201/func_0201a428.cpp
++src/unnamed/arm9/0201/func_0201a490.c
++src/unnamed/arm9/0201/func_0201a5cc.c
++src/unnamed/arm9/0201/func_0201a5f8.c
++src/unnamed/arm9/0201/func_0201a614.c
++src/unnamed/arm9/0201/func_0201a754.c
++src/unnamed/arm9/0201/func_0201a798.c
++src/unnamed/arm9/0201/func_0201a8b4.c
++src/unnamed/arm9/0201/func_0201a96c.cpp
++src/unnamed/arm9/0201/func_0201a9ec.c
++src/unnamed/arm9/0201/func_0201a9fc.c
++src/unnamed/arm9/0201/func_0201aa18.c
++src/unnamed/arm9/0201/func_0201aa50.c
++src/unnamed/arm9/0201/func_0201aaa4.c
++src/unnamed/arm9/0201/func_0201aab0.c
++src/unnamed/arm9/0201/func_0201aac8.c
++src/unnamed/arm9/0201/func_0201aad4.c
++src/unnamed/arm9/0201/func_0201aaec.c
++src/unnamed/arm9/0201/func_0201fec8.c
++src/unnamed/arm9/0201/func_0201ffcc.c
++src/unnamed/arm9/0202/func_02020028.c
++src/unnamed/arm9/0202/func_02020078.c
++src/unnamed/arm9/0202/func_020200b8.c
++src/unnamed/arm9/0202/func_020200e0.c
++src/unnamed/arm9/0202/func_02020124.c
++src/unnamed/arm9/0202/func_02020168.c
++src/unnamed/arm9/0202/func_02020190.c
++src/unnamed/arm9/0202/func_020201c0.c
++src/unnamed/arm9/0202/func_020201f0.c
++src/unnamed/arm9/0202/func_02020214.c
++src/unnamed/arm9/0202/func_02020254.c
++src/unnamed/arm9/0202/func_0202027c.c
++src/unnamed/arm9/0202/func_0202029c.c
++src/unnamed/arm9/0202/func_020202dc.c
++src/unnamed/arm9/0202/func_02020304.c
++src/unnamed/arm9/0202/func_02020334.c
++src/unnamed/arm9/0202/func_02020364.c
++src/unnamed/arm9/0202/func_02020388.c
++src/unnamed/arm9/0202/func_0202043c.c
++src/unnamed/arm9/0202/func_0202044c.c
++src/unnamed/arm9/0202/func_0202048c.cpp
++src/unnamed/arm9/0202/func_02020768.c
++src/unnamed/arm9/0202/func_020233f0.c
++src/unnamed/arm9/0202/func_0202345c.cpp
++src/unnamed/arm9/0203/func_02030500.cpp
++src/unnamed/arm9/0203/func_02030790.cpp
++src/unnamed/arm9/0203/func_02030838.c
++src/unnamed/arm9/0203/func_0203083c.cpp
++src/unnamed/arm9/0203/func_020308a8.c
++src/unnamed/arm9/0203/func_020308b4.c
++src/unnamed/arm9/0203/func_020308d0.c
++src/unnamed/arm9/0203/func_02030958.c
++src/unnamed/arm9/0203/func_02030994.c
++src/unnamed/arm9/0203/func_02030a38.c
++src/unnamed/arm9/0203/func_02030a6c.c
++src/unnamed/arm9/0203/func_02030a78.c
++src/unnamed/arm9/0203/func_02030aa4.c
++src/unnamed/arm9/0203/func_02030b58.c
++src/unnamed/arm9/0203/func_02030c38.c
++src/unnamed/arm9/0203/func_02030ca0.c
++src/unnamed/arm9/0203/func_02030dac.c
++src/unnamed/arm9/0203/func_02030e4c.c
++src/unnamed/arm9/0203/func_0203b684.c
++src/unnamed/arm9/0203/func_0203b958.c
++src/unnamed/arm9/0203/func_0203b9b4.c
++src/unnamed/arm9/0203/func_0203b9bc.c
++src/unnamed/arm9/0203/func_0203bb14.c
++src/unnamed/arm9/0203/func_0203bb5c.c
++src/unnamed/arm9/0203/func_0203bb60.c
++src/unnamed/arm9/0203/func_0203bbc0.c
++src/unnamed/arm9/0203/func_0203bc50.c
++src/unnamed/arm9/0203/func_0203bc7c.c
++src/unnamed/arm9/0203/func_0203bd24.c
++src/unnamed/arm9/0203/func_0203c178.c
++src/unnamed/arm9/0203/func_0203cc28.c
++src/unnamed/arm9/0203/func_0203ce80.c
++src/unnamed/arm9/0203/func_0203cf94.c
++src/unnamed/arm9/0203/func_0203d024.c
++src/unnamed/arm9/0203/func_0203d384.c
++src/unnamed/arm9/0203/func_0203d480.cpp
++src/unnamed/arm9/0203/func_0203d4d0.c
++src/unnamed/arm9/0203/func_0203d524.c
++src/unnamed/arm9/0203/func_0203d570.c
++src/unnamed/arm9/0203/func_0203d5bc.c
++src/unnamed/arm9/0203/func_0203d5dc.cpp
++src/unnamed/arm9/0203/func_0203d630.c
++src/unnamed/arm9/0203/func_0203d704.c
++src/unnamed/arm9/0203/func_0203d7b8.c
++src/unnamed/arm9/0203/func_0203d7d4.c
++src/unnamed/arm9/0203/func_0203d81c.c
++src/unnamed/arm9/0203/func_0203d854.c
++src/unnamed/arm9/0203/func_0203d868.c
++src/unnamed/arm9/0203/func_0203d890.c
++src/unnamed/arm9/0203/func_0203d8a0.c
++src/unnamed/arm9/0203/func_0203d8d4.c
++src/unnamed/arm9/0203/func_0203d8e8.c
++src/unnamed/arm9/0203/func_0203d8fc.c
++src/unnamed/arm9/0203/func_0203d918.c
++src/unnamed/arm9/0203/func_0203d930.c
++src/unnamed/arm9/0203/func_0203d950.c
++src/unnamed/arm9/0203/func_0203d974.c
++src/unnamed/arm9/0203/func_0203d9b4.c
++src/unnamed/arm9/0203/func_0203d9f4.c
++src/unnamed/arm9/0203/func_0203da2c.c
++src/unnamed/arm9/0203/func_0203da3c.c
++src/unnamed/arm9/0203/func_0203da4c.c
++src/unnamed/arm9/0203/func_0203da80.c
++src/unnamed/arm9/0203/func_0203da9c.c
++src/unnamed/arm9/0203/func_0203daac.c
++src/unnamed/arm9/0203/func_0203dabc.c
++src/unnamed/arm9/0203/func_0203dad4.c
++src/unnamed/arm9/0203/func_0203dae4.c
++src/unnamed/arm9/0203/func_0203dafc.c
++src/unnamed/arm9/0203/func_0203db0c.c
++src/unnamed/arm9/0203/func_0203db3c.c
++src/unnamed/arm9/0203/func_0203db64.c
++src/unnamed/arm9/0203/func_0203df40.c
++src/unnamed/arm9/0203/func_0203e0ac.c
++src/unnamed/arm9/0203/func_0203e20c.cpp
++src/unnamed/arm9/0203/func_0203e978.c
++src/unnamed/arm9/0203/func_0203e9a8.c
++src/unnamed/arm9/0203/func_0203ea5c.c
++src/unnamed/arm9/0203/func_0203f604.cpp
++src/unnamed/arm9/0203/func_0203f644.c
++src/unnamed/arm9/0203/func_0203f650.c
++src/unnamed/arm9/0203/func_0203f6a4.c
++src/unnamed/arm9/0203/func_0203f6b4.c
++src/unnamed/arm9/0203/func_0203f6e8.c
++src/unnamed/arm9/0203/func_0203f714.c
++src/unnamed/arm9/0203/func_0203f818.c
++src/unnamed/arm9/0203/func_0203f8a4.c
++src/unnamed/arm9/0203/func_0203f920.c
++src/unnamed/arm9/0203/func_0203f9d4.c
++src/unnamed/arm9/0203/func_0203fa50.c
++src/unnamed/arm9/0203/func_0203faa8.c
++src/unnamed/arm9/0203/func_0203fb5c.c
++src/unnamed/arm9/0203/func_0203fb98.c
++src/unnamed/arm9/0203/func_0203fbc4.c
++src/unnamed/arm9/0203/func_0203fc38.c
++src/unnamed/arm9/0203/func_0203fc74.c
++src/unnamed/arm9/0203/func_0203fcb0.c
++src/unnamed/arm9/0203/func_0203fcec.c
++src/unnamed/arm9/0203/func_0203fd28.c
++src/unnamed/arm9/0203/func_0203fd64.c
++src/unnamed/arm9/0203/func_0203fdac.c
++src/unnamed/arm9/0203/func_0203fec4.c
++src/unnamed/arm9/0204/func_02040014.c
++src/unnamed/arm9/0204/func_020401e8.c
++src/unnamed/arm9/0204/func_020402a0.c
++src/unnamed/arm9/0204/func_02040384.c
++src/unnamed/arm9/0204/func_02040388.c
++src/unnamed/arm9/0204/func_02040408.c
++src/unnamed/arm9/0204/func_02040504.c
++src/unnamed/arm9/0204/func_020405b4.c
++src/unnamed/arm9/0204/func_02040634.c
++src/unnamed/arm9/0204/func_02040638.c
++src/unnamed/arm9/0204/func_0204068c.c
++src/unnamed/arm9/0204/func_020406b4.c
++src/unnamed/arm9/0204/func_02040704.c
++src/unnamed/arm9/0204/func_02040714.c
++src/unnamed/arm9/0204/func_02040724.c
++src/unnamed/arm9/0204/func_02040790.c
++src/unnamed/arm9/0204/func_02040820.c
++src/unnamed/arm9/0204/func_020408b0.cpp
++src/unnamed/arm9/0204/func_02040a5c.cpp
++src/unnamed/arm9/0204/func_02040a84.c
++src/unnamed/arm9/0204/func_02040a94.c
++src/unnamed/arm9/0204/func_02040aa4.cpp
++src/unnamed/arm9/0204/func_02040bb0.c
++src/unnamed/arm9/0204/func_02040c34.c
++src/unnamed/arm9/0204/func_02040f30.cpp
++src/unnamed/arm9/0204/func_02041224.cpp
++src/unnamed/arm9/0204/func_020412f0.cpp
++src/unnamed/arm9/0204/func_0204175c.cpp
++src/unnamed/arm9/0204/func_020417d0.c
++src/unnamed/arm9/0204/func_020418f0.c
++src/unnamed/arm9/0204/func_02041930.c
++src/unnamed/arm9/0204/func_02041a00.c
++src/unnamed/arm9/0204/func_02041a94.cpp
++src/unnamed/arm9/0204/func_02041c2c.c
++src/unnamed/arm9/0204/func_02041c64.c
++src/unnamed/arm9/0204/func_02041ce0.c
++src/unnamed/arm9/0204/func_02041d28.cpp
++src/unnamed/arm9/0204/func_02041e14.c
++src/unnamed/arm9/0204/func_02042160.c
++src/unnamed/arm9/0204/func_020421b4.c
++src/unnamed/arm9/0204/func_02042200.c
++src/unnamed/arm9/0204/func_02042254.cpp
++src/unnamed/arm9/0204/func_020423c8.c
++src/unnamed/arm9/0204/func_020423dc.c
++src/unnamed/arm9/0204/func_020424c0.cpp
++src/unnamed/arm9/0204/func_02042668.c
++src/unnamed/arm9/0204/func_020426f0.c
++src/unnamed/arm9/0204/func_020426f8.c
++src/unnamed/arm9/0204/func_0204271c.c
++src/unnamed/arm9/0204/func_02042748.c
++src/unnamed/arm9/0204/func_02042778.c
++src/unnamed/arm9/0204/func_02042784.c
++src/unnamed/arm9/0204/func_020427c4.c
++src/unnamed/arm9/0204/func_020427f8.c
++src/unnamed/arm9/0204/func_020469e0.c
++src/unnamed/arm9/0204/func_020469e8.c
++src/unnamed/arm9/0204/func_02046b64.c
++src/unnamed/arm9/0204/func_02046bbc.c
++src/unnamed/arm9/0204/func_02046d50.c
++src/unnamed/arm9/0204/func_02046e28.c
++src/unnamed/arm9/0204/func_020470e8.c
++src/unnamed/arm9/0204/func_02047144.cpp
++src/unnamed/arm9/0204/func_02047218.c
++src/unnamed/arm9/0204/func_02047910.c
++src/unnamed/arm9/0204/func_020490b0.cpp
++src/unnamed/arm9/0204/func_0204921c.c
++src/unnamed/arm9/0204/func_020494cc.c
++src/unnamed/arm9/0204/func_02049764.c
++src/unnamed/arm9/0204/func_020497a0.cpp
++src/unnamed/arm9/0204/func_020499bc.cpp
++src/unnamed/arm9/0204/func_02049ba8.c
++src/unnamed/arm9/0204/func_02049c48.cpp
++src/unnamed/arm9/0204/func_02049cd8.c
++src/unnamed/arm9/0204/func_0204a5bc.c
++src/unnamed/arm9/0204/func_0204a5c8.c
++src/unnamed/arm9/0204/func_0204a730.c
++src/unnamed/arm9/0204/func_0204ae2c.c
++src/unnamed/arm9/0204/func_0204af38.c
++src/unnamed/arm9/0204/func_0204af3c.c
++src/unnamed/arm9/0204/func_0204b028.c
++src/unnamed/arm9/0204/func_0204b244.c
++src/unnamed/arm9/0204/func_0204b460.c
++src/unnamed/arm9/0204/func_0204b81c.c
++src/unnamed/arm9/0204/func_0204bbd8.c
++src/unnamed/arm9/0204/func_0204be40.c
++src/unnamed/arm9/0204/func_0204c0a8.c
++src/unnamed/arm9/0204/func_0204c0e8.c
++src/unnamed/arm9/0204/func_0204c194.c
++src/unnamed/arm9/0204/func_0204c24c.c
++src/unnamed/arm9/0204/func_0204c304.c
++src/unnamed/arm9/0204/func_0204c584.c
++src/unnamed/arm9/0204/func_0204d0b8.c
++src/unnamed/arm9/0204/func_0204d104.c
++src/unnamed/arm9/0204/func_0204d150.c
++src/unnamed/arm9/0204/func_0204d1b4.c
++src/unnamed/arm9/0204/func_0204d294.c
++src/unnamed/arm9/0204/func_0204d440.c
++src/unnamed/arm9/0204/func_0204d8e8.c
++src/unnamed/arm9/0204/func_0204d958.c
++src/unnamed/arm9/0204/func_0204d9a0.c
++src/unnamed/arm9/0204/func_0204d9f0.c
++src/unnamed/arm9/0204/func_0204da4c.c
++src/unnamed/arm9/0204/func_0204dab4.cpp
++src/unnamed/arm9/0204/func_0204dc84.c
++src/unnamed/arm9/0204/func_0204dcc0.c
++src/unnamed/arm9/0205/func_02052514.c
++src/unnamed/arm9/0205/func_020527e8.c
++src/unnamed/arm9/0205/func_02052800.c
++src/unnamed/arm9/0205/func_02052820.c
++src/unnamed/arm9/0205/func_0205283c.c
++src/unnamed/arm9/0205/func_02052ec8.c
++src/unnamed/arm9/0205/func_02053320.c
++src/unnamed/arm9/0205/func_02053644.c
++src/unnamed/arm9/0205/func_020538b8.cpp
++src/unnamed/arm9/0205/func_02053d9c.c
++src/unnamed/arm9/0205/func_0205532c.c
++src/unnamed/arm9/0205/func_02055388.c
++src/unnamed/arm9/0205/func_020553a4.c
++src/unnamed/arm9/0205/func_020553c0.c
++src/unnamed/arm9/0205/func_02057e30.c
++src/unnamed/arm9/0205/func_02058568.c
++src/unnamed/arm9/0205/func_02059d98.c
++src/unnamed/arm9/0205/func_0205d368.c
++src/unnamed/arm9/0205/func_0205d3e4.cpp
++src/unnamed/arm9/0205/func_0205d518.c
++src/unnamed/arm9/0205/func_0205d568.c
++src/unnamed/arm9/0205/func_0205d644.c
++src/unnamed/arm9/0205/func_0205d688.c
++src/unnamed/arm9/0205/func_0205e280.c
++src/unnamed/arm9/0205/func_0205e3d4.c
++src/unnamed/arm9/0205/func_0205e6e4.c
++src/unnamed/arm9/0205/func_0205e7e0.c
++src/unnamed/arm9/0205/func_0205e89c.c
++src/unnamed/arm9/0205/func_0205e904.c
++src/unnamed/arm9/0206/func_02060364.c
++src/unnamed/arm9/0206/func_02060398.c
++src/unnamed/arm9/0206/func_02060484.cpp
++src/unnamed/arm9/0206/func_02060558.cpp
++src/unnamed/arm9/0206/func_0206062c.cpp
++src/unnamed/arm9/0206/func_0206071c.cpp
++src/unnamed/arm9/0206/func_020607e8.c
++src/unnamed/arm9/0206/func_0206259c.c
++src/unnamed/arm9/0206/func_02063718.c
++src/unnamed/arm9/0206/func_02063980.c
++src/unnamed/arm9/0206/func_02063ae4.c
++src/unnamed/arm9/0206/func_02063bc4.c
++src/unnamed/arm9/0206/func_02063d3c.c
++src/unnamed/arm9/0206/func_02063da0.c
++src/unnamed/arm9/0206/func_02063e08.c
++src/unnamed/arm9/0206/func_02063ea8.c
++src/unnamed/arm9/0206/func_02064470.c
++src/unnamed/arm9/0206/func_02064554.c
++src/unnamed/arm9/0206/func_02064674.c
++src/unnamed/arm9/0206/func_0206470c.c
++src/unnamed/arm9/0206/func_020647a4.c
++src/unnamed/arm9/0206/func_020647d8.c
++src/unnamed/arm9/0206/func_020647fc.c
++src/unnamed/arm9/0206/func_02064888.c
++src/unnamed/arm9/0206/func_0206491c.c
++src/unnamed/arm9/0206/func_02064a28.c
++src/unnamed/arm9/0206/func_02064a94.c
++src/unnamed/arm9/0206/func_02064b2c.c
++src/unnamed/arm9/0206/func_02064bac.c
++src/unnamed/arm9/0206/func_02064c2c.c
++src/unnamed/arm9/0206/func_02064cd8.c
++src/unnamed/arm9/0206/func_02064d6c.c
++src/unnamed/arm9/0206/func_02064e18.c
++src/unnamed/arm9/0206/func_02064eac.c
++src/unnamed/arm9/0206/func_02064f54.c
++src/unnamed/arm9/0206/func_02064fe8.c
++src/unnamed/arm9/0206/func_02065050.c
++src/unnamed/arm9/0206/func_020650a0.c
++src/unnamed/arm9/0206/func_020650d8.c
++src/unnamed/arm9/0206/func_02065138.c
++src/unnamed/arm9/0206/func_02065170.cpp
++src/unnamed/arm9/0206/func_02065234.cpp
++src/unnamed/arm9/0206/func_020652fc.cpp
++src/unnamed/arm9/0206/func_020653cc.c
++src/unnamed/arm9/0206/func_020654d0.c
++src/unnamed/arm9/0206/func_02065500.c
++src/unnamed/arm9/0206/func_02065538.c
++src/unnamed/arm9/0206/func_020656d4.c
++src/unnamed/arm9/0206/func_02065730.c
++src/unnamed/arm9/0206/func_02065788.c
++src/unnamed/arm9/0206/func_020657d0.c
++src/unnamed/arm9/0206/func_020657fc.cpp
++src/unnamed/arm9/0206/func_020658c0.cpp
++src/unnamed/arm9/0206/func_02065970.c
++src/unnamed/arm9/0206/func_020659a0.c
++src/unnamed/arm9/0206/func_020659f8.c
++src/unnamed/arm9/0206/func_02065a4c.c
++src/unnamed/arm9/0206/func_02065a74.c
++src/unnamed/arm9/0206/func_02065a94.c
++src/unnamed/arm9/0206/func_02065ad0.c
++src/unnamed/arm9/0206/func_02065ae0.c
++src/unnamed/arm9/0206/func_02065af0.cpp
++src/unnamed/arm9/0206/func_02065b88.c
++src/unnamed/arm9/0206/func_02065b94.c
++src/unnamed/arm9/0206/func_02065ba0.c
++src/unnamed/arm9/0206/func_02065bb0.c
++src/unnamed/arm9/0206/func_02065bc0.c
++src/unnamed/arm9/0206/func_02065bd0.c
++src/unnamed/arm9/0206/func_02065be0.c
++src/unnamed/arm9/0206/func_02065bf4.c
++src/unnamed/arm9/0206/func_02065c1c.c
++src/unnamed/arm9/0206/func_02065c2c.c
++src/unnamed/arm9/0206/func_02065d5c.c
++src/unnamed/arm9/0206/func_02065de4.c
++src/unnamed/arm9/0206/func_020672d0.c
++src/unnamed/arm9/0206/func_0206736c.c
++src/unnamed/arm9/0206/func_02067530.c
++src/unnamed/arm9/0206/func_02067604.c
++src/unnamed/arm9/0206/func_020676e0.c
++src/unnamed/arm9/0206/func_020678a4.c
++src/unnamed/arm9/0206/func_02067928.cpp
++src/unnamed/arm9/0206/func_02067b68.c
++src/unnamed/arm9/0206/func_02067bfc.cpp
++src/unnamed/arm9/0206/func_02067e70.c
++src/unnamed/arm9/0206/func_02067ee4.c
++src/unnamed/arm9/0206/func_02067f2c.cpp
++src/unnamed/arm9/0206/func_0206a928.c
++src/unnamed/arm9/0206/func_0206bc8c.c
++src/unnamed/arm9/0206/func_0206bdb4.c
++src/unnamed/arm9/0206/func_0206c244.c
++src/unnamed/arm9/0206/func_0206c51c.c
++src/unnamed/arm9/0206/func_0206c8b4.c
++src/unnamed/arm9/0206/func_0206c90c.c
++src/unnamed/arm9/0206/func_0206c93c.c
++src/unnamed/arm9/0206/func_0206c9f4.c
++src/unnamed/arm9/0206/func_0206ca44.c
++src/unnamed/arm9/0206/func_0206ca7c.c
++src/unnamed/arm9/0206/func_0206cb0c.c
++src/unnamed/arm9/0206/func_0206cbc0.c
++src/unnamed/arm9/0206/func_0206ce90.c
++src/unnamed/arm9/0206/func_0206cec0.c
++src/unnamed/arm9/0206/func_0206cee0.c
++src/unnamed/arm9/0206/func_0206cf7c.c
++src/unnamed/arm9/0206/func_0206d9cc.cpp
++src/unnamed/arm9/0206/func_0206da18.cpp
++src/unnamed/arm9/0207/__sinit_02074dbc.c
++src/unnamed/arm9/0207/__sinit_02074dc0.c
++src/unnamed/arm9/0207/__sinit_02074e0c.c
++src/unnamed/arm9/0207/__sinit_02074e44.c
++src/unnamed/arm9/0207/__sinit_02074e80.c
++src/unnamed/arm9/0207/__sinit_02075054.c
++src/unnamed/arm9/0207/__sinit_020750b4.c
++src/unnamed/arm9/0207/__sinit_020750b8.c
++src/unnamed/arm9/0207/__sinit_020750ec.c
++src/unnamed/arm9/0207/__sinit_0207511c.c
++src/unnamed/arm9/0207/__sinit_02075150.c
++src/unnamed/arm9/0207/func_02071784.c
++src/unnamed/arm9/0207/func_02071790.c
++src/unnamed/arm9/0207/func_0207180c.c
++src/unnamed/arm9/0207/func_02071844.c
++src/unnamed/arm9/0207/func_02071864.c
++src/unnamed/arm9/0207/func_02071910.c
++src/unnamed/arm9/0207/func_02071974.c
++src/unnamed/arm9/0207/func_02071988.c
++src/unnamed/arm9/0207/func_0207199c.c
++src/unnamed/arm9/0207/func_02071a50.c
++src/unnamed/arm9/0207/func_02071be8.cpp
++src/unnamed/arm9/0207/func_02071ccc.c
++src/unnamed/arm9/0207/func_02071d3c.cpp
++src/unnamed/arm9/0207/func_02071f1c.c
++src/unnamed/arm9/0207/func_02071f88.c
++src/unnamed/arm9/0207/func_02072014.cpp
++src/unnamed/arm9/0207/func_02072168.cpp
++src/unnamed/arm9/0207/func_020729f4.c
++src/unnamed/arm9/0207/func_02072d90.c
++src/unnamed/arm9/0207/func_02072dac.c
++src/unnamed/arm9/0207/func_02072ed0.c
++src/unnamed/arm9/0207/func_0207322c.c
++src/unnamed/arm9/0207/func_02073238.c
++src/unnamed/arm9/0207/func_02073300.cpp
++src/unnamed/arm9/0207/func_02073534.cpp
++src/unnamed/ov002/__sinit_ov002_02100560.cpp
++src/unnamed/ov002/func_ov002_020effb8.cpp
++src/unnamed/ov006/__sinit_ov006_02130a04.c
++src/unnamed/ov006/__sinit_ov006_021322bc.c
++src/unnamed/ov007/func_ov007_020ad660.cpp
++src/unnamed/ov007/func_ov007_020ada70.cpp
++src/unnamed/ov007/func_ov007_020adb84.c
++src/unnamed/ov007/func_ov007_020adbc8.c
++src/unnamed/ov007/func_ov007_020adc08.c
++src/unnamed/ov007/func_ov007_020add3c.c
++src/unnamed/ov007/func_ov007_020ade14.c
++src/unnamed/ov007/func_ov007_020ade58.c
++src/unnamed/ov007/func_ov007_020ae070.c
++src/unnamed/ov007/func_ov007_020ae2d0.cpp
++src/unnamed/ov007/func_ov007_020ae454.cpp
++src/unnamed/ov007/func_ov007_020ae558.c
++src/unnamed/ov007/func_ov007_020ae810.c
++src/unnamed/ov007/func_ov007_020ae834.c
++src/unnamed/ov007/func_ov007_020aea4c.c
++src/unnamed/ov007/func_ov007_020aea6c.c
++src/unnamed/ov007/func_ov007_020aeaec.cpp
++src/unnamed/ov007/func_ov007_020aeb34.c
++src/unnamed/ov007/func_ov007_020aebac.c
++src/unnamed/ov007/func_ov007_020aec00.c
++src/unnamed/ov007/func_ov007_020aec94.c
++src/unnamed/ov007/func_ov007_020aed98.cpp
++src/unnamed/ov007/func_ov007_020aef78.c
++src/unnamed/ov007/func_ov007_020aef84.cpp
++src/unnamed/ov007/func_ov007_020aefb4.cpp
++src/unnamed/ov007/func_ov007_020af0e4.c
++src/unnamed/ov007/func_ov007_020af12c.c
++src/unnamed/ov007/func_ov007_020af1f4.c
++src/unnamed/ov007/func_ov007_020af260.cpp
++src/unnamed/ov007/func_ov007_020af34c.c
++src/unnamed/ov007/func_ov007_020af390.c
++src/unnamed/ov007/func_ov007_020af434.c
++src/unnamed/ov007/func_ov007_020af4dc.c
++src/unnamed/ov007/func_ov007_020af580.c
++src/unnamed/ov007/func_ov007_020af59c.c
++src/unnamed/ov007/func_ov007_020af84c.c
++src/unnamed/ov007/func_ov007_020afc44.c
++src/unnamed/ov007/func_ov007_020b01a4.c
++src/unnamed/ov007/func_ov007_020b01f4.c
++src/unnamed/ov007/func_ov007_020b0244.c
++src/unnamed/ov007/func_ov007_020b0324.c
++src/unnamed/ov007/func_ov007_020b0340.c
++src/unnamed/ov007/func_ov007_020b0358.c
++src/unnamed/ov007/func_ov007_020b0520.c
++src/unnamed/ov007/func_ov007_020b0548.c
++src/unnamed/ov007/func_ov007_020b066c.cpp
++src/unnamed/ov007/func_ov007_020b0834.c
++src/unnamed/ov007/func_ov007_020b0a20.cpp
++src/unnamed/ov007/func_ov007_020b0da0.cpp
++src/unnamed/ov007/func_ov007_020b10dc.c
++src/unnamed/ov007/func_ov007_020b11bc.c
++src/unnamed/ov007/func_ov007_020b1224.c
++src/unnamed/ov007/func_ov007_020b12e8.c
++src/unnamed/ov007/func_ov007_020b131c.c
++src/unnamed/ov007/func_ov007_020b1390.c
++src/unnamed/ov007/func_ov007_020b155c.c
++src/unnamed/ov007/func_ov007_020b1604.c
++src/unnamed/ov007/func_ov007_020b166c.c
++src/unnamed/ov007/func_ov007_020b16f0.c
++src/unnamed/ov007/func_ov007_020b1718.cpp
++src/unnamed/ov007/func_ov007_020b1b4c.c
++src/unnamed/ov007/func_ov007_020b1b70.c
++src/unnamed/ov007/func_ov007_020b1b74.cpp
++src/unnamed/ov007/func_ov007_020b1cf0.cpp
++src/unnamed/ov007/func_ov007_020b1f2c.cpp
++src/unnamed/ov007/func_ov007_020b1fa4.cpp
++src/unnamed/ov007/func_ov007_020b20e8.cpp
++src/unnamed/ov007/func_ov007_020b2160.cpp
++src/unnamed/ov007/func_ov007_020b22e0.c
++src/unnamed/ov007/func_ov007_020b2308.cpp
++src/unnamed/ov007/func_ov007_020b2370.cpp
++src/unnamed/ov007/func_ov007_020b2454.c
++src/unnamed/ov007/func_ov007_020b257c.c
++src/unnamed/ov007/func_ov007_020b2614.c
++src/unnamed/ov007/func_ov007_020b2728.c
++src/unnamed/ov007/func_ov007_020b58e4.c
++src/unnamed/ov007/func_ov007_020b5bf0.cpp
++src/unnamed/ov007/func_ov007_020b5f64.c
++src/unnamed/ov007/func_ov007_020b6134.cpp
++src/unnamed/ov007/func_ov007_020b6208.c
++src/unnamed/ov007/func_ov007_020b63e4.c
++src/unnamed/ov007/func_ov007_020b647c.c
++src/unnamed/ov007/func_ov007_020b64a8.c
++src/unnamed/ov007/func_ov007_020b6544.c
++src/unnamed/ov007/func_ov007_020b65e0.c
++src/unnamed/ov007/func_ov007_020b68e8.c
++src/unnamed/ov007/func_ov007_020b693c.c
++src/unnamed/ov007/func_ov007_020b697c.c
++src/unnamed/ov007/func_ov007_020b69c4.c
++src/unnamed/ov007/func_ov007_020b6a84.c
++src/unnamed/ov007/func_ov007_020b6c54.cpp
++src/unnamed/ov007/func_ov007_020b6cd0.c
++src/unnamed/ov007/func_ov007_020b6d40.c
++src/unnamed/ov007/func_ov007_020b72a0.c
++src/unnamed/ov007/func_ov007_020b72d8.c
++src/unnamed/ov007/func_ov007_020b72fc.c
++src/unnamed/ov007/func_ov007_020b7320.c
++src/unnamed/ov007/func_ov007_020b7364.c
++src/unnamed/ov007/func_ov007_020b7384.c
++src/unnamed/ov007/func_ov007_020b73b4.c
++src/unnamed/ov007/func_ov007_020b7594.c
++src/unnamed/ov007/func_ov007_020bbe60.c
++src/unnamed/ov007/func_ov007_020bbf98.c
++src/unnamed/ov007/func_ov007_020bbff0.cpp
++src/unnamed/ov007/func_ov007_020bc02c.cpp
++src/unnamed/ov007/func_ov007_020bc2e4.c
++src/unnamed/ov007/func_ov007_020bc32c.c
++src/unnamed/ov007/func_ov007_020bc374.c
++src/unnamed/ov007/func_ov007_020bc3dc.c
++src/unnamed/ov007/func_ov007_020bc434.c
++src/unnamed/ov007/func_ov007_020bc47c.cpp
++src/unnamed/ov007/func_ov007_020bc53c.cpp
++src/unnamed/ov007/func_ov007_020bc5fc.c
++src/unnamed/ov007/func_ov007_020bc658.c
++src/unnamed/ov007/func_ov007_020bc6b4.c
++src/unnamed/ov007/func_ov007_020bc6d4.c
++src/unnamed/ov007/func_ov007_020bc7dc.cpp
++src/unnamed/ov007/func_ov007_020bc894.cpp
++src/unnamed/ov007/func_ov007_020bc968.c
++src/unnamed/ov007/func_ov007_020bc9c8.cpp
++src/unnamed/ov007/func_ov007_020bca40.c
++src/unnamed/ov007/func_ov007_020bcba8.cpp
++src/unnamed/ov007/func_ov007_020bcdb8.cpp
++src/unnamed/ov007/func_ov007_020bce70.cpp
++src/unnamed/ov007/func_ov007_020bcf90.cpp
++src/unnamed/ov007/func_ov007_020bd1c0.c
++src/unnamed/ov007/func_ov007_020bd4a0.cpp
++src/unnamed/ov007/func_ov007_020bd4e8.cpp
++src/unnamed/ov007/func_ov007_020bd500.cpp
++src/unnamed/ov007/func_ov007_020bd5a8.cpp
++src/unnamed/ov007/func_ov007_020bd648.cpp
++src/unnamed/ov007/func_ov007_020bd960.cpp
++src/unnamed/ov007/func_ov007_020bfd70.cpp
++src/unnamed/ov007/func_ov007_020bfe4c.cpp
++src/unnamed/ov007/func_ov007_020bff38.c
++src/unnamed/ov007/func_ov007_020bffb8.c
++src/unnamed/ov007/func_ov007_020c0128.cpp
++src/unnamed/ov007/func_ov007_020c020c.c
++src/unnamed/ov007/func_ov007_020c023c.c
++src/unnamed/ov007/func_ov007_020c0288.cpp
++src/unnamed/ov007/func_ov007_020c02d8.cpp
++src/unnamed/ov007/func_ov007_020c0308.cpp
++src/unnamed/ov007/func_ov007_020c0354.cpp
++src/unnamed/ov007/func_ov007_020c0384.c
++src/unnamed/ov007/func_ov007_020c03b0.c
++src/unnamed/ov007/func_ov007_020c05e4.c
++src/unnamed/ov007/func_ov007_020c05f8.c
++src/unnamed/ov007/func_ov007_020c0604.c
++src/unnamed/ov007/func_ov007_020c0638.c
++src/unnamed/ov007/func_ov007_020c076c.cpp
++src/unnamed/ov007/func_ov007_020c0a44.c
++src/unnamed/ov007/func_ov007_020c0af4.c
++src/unnamed/ov007/func_ov007_020c0b20.c
++src/unnamed/ov007/func_ov007_020c0b78.c
++src/unnamed/ov007/func_ov007_020c0d70.c
++src/unnamed/ov007/func_ov007_020c0eb0.cpp
++src/unnamed/ov007/func_ov007_020c1048.c
++src/unnamed/ov007/func_ov007_020c10b0.c
++src/unnamed/ov007/func_ov007_020c10ec.c
++src/unnamed/ov007/func_ov007_020c1180.cpp
++src/unnamed/ov007/func_ov007_020c11ac.c
++src/unnamed/ov007/func_ov007_020c121c.c
++src/unnamed/ov007/func_ov007_020c12ac.c
++src/unnamed/ov007/func_ov007_020c1384.cpp
++src/unnamed/ov007/func_ov007_020c13a4.c
++src/unnamed/ov007/func_ov007_020c13f4.c
++src/unnamed/ov007/func_ov007_020c19cc.cpp
++src/unnamed/ov007/func_ov007_020c1db0.c
++src/unnamed/ov007/func_ov007_020c2018.c
++src/unnamed/ov007/func_ov007_020c2024.c
++src/unnamed/ov007/func_ov007_020c2090.c
++src/unnamed/ov007/func_ov007_020c20b8.c
++src/unnamed/ov007/func_ov007_020c22a0.c
++src/unnamed/ov007/func_ov007_020c232c.c
++src/unnamed/ov007/func_ov007_020c2390.c
++src/unnamed/ov007/func_ov007_020c2410.c
++src/unnamed/ov007/func_ov007_020c241c.c
++src/unnamed/ov007/func_ov007_020c249c.c
++src/unnamed/ov007/func_ov007_020c24d0.c
++src/unnamed/ov007/func_ov007_020c25fc.c
++src/unnamed/ov007/func_ov007_020c26fc.c
++src/unnamed/ov007/func_ov007_020c27b4.c
++src/unnamed/ov007/func_ov007_020c281c.cpp
++src/unnamed/ov007/func_ov007_020c28ac.c
++src/unnamed/ov007/func_ov007_020c29b4.c
++src/unnamed/ov007/func_ov007_020c2a04.c
++src/unnamed/ov007/func_ov007_020c2acc.c
++src/unnamed/ov007/func_ov007_020c2bf8.c
++src/unnamed/ov007/func_ov007_020c2c68.c
++src/unnamed/ov007/func_ov007_020c2d44.c
++src/unnamed/ov007/func_ov007_020c2dfc.cpp
++src/unnamed/ov007/func_ov007_020c2e90.c
++src/unnamed/ov007/func_ov007_020c2f14.cpp
++src/unnamed/ov007/func_ov007_020c3054.cpp
++src/unnamed/ov007/func_ov007_020c30ac.cpp
++src/unnamed/ov007/func_ov007_020c31e0.cpp
++src/unnamed/ov007/func_ov007_020c32e8.cpp
++src/unnamed/ov007/func_ov007_020c338c.c
++src/unnamed/ov007/func_ov007_020c3398.c
++src/unnamed/ov007/func_ov007_020c33d0.cpp
++src/unnamed/ov007/func_ov007_020c3544.c
++src/unnamed/ov007/func_ov007_020c3550.c
++src/unnamed/ov007/func_ov007_020c3598.cpp
++src/unnamed/ov007/func_ov007_020c368c.cpp
++src/unnamed/ov007/func_ov007_020c39f8.cpp
++src/unnamed/ov007/func_ov007_020c3abc.cpp
++src/unnamed/ov007/func_ov007_020c3ba8.cpp
++src/unnamed/ov007/func_ov007_020c3bc8.cpp
++src/unnamed/ov007/func_ov007_020c3be0.cpp
++src/unnamed/ov007/func_ov007_020c3e7c.cpp
++src/unnamed/ov007/func_ov007_020c3ee8.c
++src/unnamed/ov007/func_ov007_020c3f00.c
++src/unnamed/ov007/func_ov007_020c4090.c
++src/unnamed/ov007/func_ov007_020c40b4.cpp
++src/unnamed/ov007/func_ov007_020c40d4.cpp
++src/unnamed/ov007/func_ov007_020c4128.c
++src/unnamed/ov007/func_ov007_020c41dc.c
++src/unnamed/ov007/func_ov007_020c421c.c
++src/unnamed/ov007/func_ov007_020c42f8.c
++src/unnamed/ov007/func_ov007_020c4388.cpp
++src/unnamed/ov007/func_ov007_020c43bc.cpp
++src/unnamed/ov007/func_ov007_020c44c4.cpp
++src/unnamed/ov007/func_ov007_020c44e4.c
++src/unnamed/ov007/func_ov007_020c4684.c
++src/unnamed/ov007/func_ov007_020c49bc.cpp
++src/unnamed/ov007/func_ov007_020c4dfc.c
++src/unnamed/ov007/func_ov007_020c4e98.c
++src/unnamed/ov007/func_ov007_020c4f50.c
++src/unnamed/ov007/func_ov007_020c4fcc.cpp
++src/unnamed/ov007/func_ov007_020c5014.cpp
++src/unnamed/ov007/func_ov007_020c510c.cpp
++src/unnamed/ov007/func_ov007_020c5188.c
++src/unnamed/ov007/func_ov007_020c5490.c
++src/unnamed/ov007/func_ov007_020c55bc.c
++src/unnamed/ov007/func_ov007_020c56bc.c
++src/unnamed/ov007/func_ov007_020c5854.c
++src/unnamed/ov007/func_ov007_020c5948.c
++src/unnamed/ov007/func_ov007_020c5a6c.cpp
++src/unnamed/ov007/func_ov007_020c5c14.c
++src/unnamed/ov007/func_ov007_020c5d5c.c
++src/unnamed/ov007/func_ov007_020c5db0.c
++src/unnamed/ov007/func_ov007_020c5dec.cpp
++src/unnamed/ov007/func_ov007_020c5ef0.c
++src/unnamed/ov007/func_ov007_020c5fc8.c
++src/unnamed/ov007/func_ov007_020c6174.c
++src/unnamed/ov007/func_ov007_020c62cc.c
++src/unnamed/ov007/func_ov007_020c6314.c
++src/unnamed/ov007/func_ov007_020c64c4.c
++src/unnamed/ov007/func_ov007_020c6550.c
++src/unnamed/ov007/func_ov007_020c65bc.c
++src/unnamed/ov007/func_ov007_020c6684.c
++src/unnamed/ov007/func_ov007_020c6724.c
++src/unnamed/ov007/func_ov007_020c6784.c
++src/unnamed/ov007/func_ov007_020c684c.c
++src/unnamed/ov007/func_ov007_020c690c.c
++src/unnamed/ov007/func_ov007_020c6af0.c
++src/unnamed/ov007/func_ov007_020c6b58.c
++src/unnamed/ov007/func_ov007_020c6d20.c
++src/unnamed/ov007/func_ov007_020c6d90.cpp
++src/unnamed/ov007/func_ov007_020c6e68.c
++src/unnamed/ov007/func_ov007_020c704c.cpp
++src/unnamed/ov007/func_ov007_020c71c0.c
++src/unnamed/ov007/func_ov007_020c7240.c
++src/unnamed/ov007/func_ov007_020c72d0.c
++src/unnamed/ov007/func_ov007_020c7348.c
++src/unnamed/ov007/func_ov007_020c7368.c
++src/unnamed/ov007/func_ov007_020c73f0.c
++src/unnamed/ov007/func_ov007_020c7504.c
++src/unnamed/ov007/func_ov007_020c7560.c
++src/unnamed/ov007/func_ov007_020c7694.c
++src/unnamed/ov007/func_ov007_020c775c.c
++src/unnamed/ov007/func_ov007_020c7804.c
++src/unnamed/ov007/func_ov007_020c78b0.c
++src/unnamed/ov007/func_ov007_020c78dc.c
++src/unnamed/ov007/func_ov007_020c798c.c
++src/unnamed/ov007/func_ov007_020c7a84.c
++src/unnamed/ov007/func_ov007_020c7b2c.c
++src/unnamed/ov007/func_ov007_020c7c60.c
++src/unnamed/ov007/func_ov007_020c7d60.c
++src/unnamed/ov007/func_ov007_020c8010.cpp
++src/unnamed/ov007/func_ov007_020c806c.c
++src/unnamed/ov007/func_ov007_020c80c8.c
++src/unnamed/ov007/func_ov007_020c81a0.c
++src/unnamed/ov007/func_ov007_020c831c.c
++src/unnamed/ov007/func_ov007_020c83fc.c
++src/unnamed/ov007/func_ov007_020c8440.c
++src/unnamed/ov007/func_ov007_020c844c.c
++src/unnamed/ov007/func_ov007_020c8498.c
++src/unnamed/ov007/func_ov007_020c8688.c
++src/unnamed/ov007/func_ov007_020c86a8.c
++src/unnamed/ov007/func_ov007_020c86c4.cpp
++src/unnamed/ov007/func_ov007_020c8970.c
++src/unnamed/ov007/func_ov007_020c897c.c
++src/unnamed/ov007/func_ov007_020c8ac0.c
++src/unnamed/ov007/func_ov007_020c8b04.c
++src/unnamed/ov007/func_ov007_020c8b10.c
++src/unnamed/ov007/func_ov007_020c8b34.c
++src/unnamed/ov007/func_ov007_020c8bc8.cpp
++src/unnamed/ov007/func_ov007_020c8c88.c
++src/unnamed/ov007/func_ov007_020c8de0.c
++src/unnamed/ov007/func_ov007_020c8f58.c
++src/unnamed/ov007/func_ov007_020c8f64.c
++src/unnamed/ov007/func_ov007_020c8f98.c
++src/unnamed/ov007/func_ov007_020c9080.c
++src/unnamed/ov007/func_ov007_020c908c.c
++src/unnamed/ov007/func_ov007_020c90c0.c
++src/unnamed/ov007/func_ov007_020c90f8.c
++src/unnamed/ov007/func_ov007_020c9110.c
++src/unnamed/ov007/func_ov007_020c9214.c
++src/unnamed/ov007/func_ov007_020c9268.c
++src/unnamed/ov007/func_ov007_020c92d0.cpp
++src/unnamed/ov007/func_ov007_020c934c.cpp
++src/unnamed/ov007/func_ov007_020c937c.c
++src/unnamed/ov007/func_ov007_020c9388.cpp
++src/unnamed/ov007/func_ov007_020c93b4.c
++src/unnamed/ov007/func_ov007_020c93c4.c
++src/unnamed/ov007/func_ov007_020c940c.c
++src/unnamed/ov007/func_ov007_020c9460.c
++src/unnamed/ov007/func_ov007_020c946c.c
++src/unnamed/ov007/func_ov007_020c95fc.c
++src/unnamed/ov007/func_ov007_020c9688.c
++src/unnamed/ov007/func_ov007_020c9988.c
++src/unnamed/ov007/func_ov007_020c99d8.c
++src/unnamed/ov007/func_ov007_020c9a2c.c
++src/unnamed/ov007/func_ov007_020c9a84.cpp
++src/unnamed/ov007/func_ov007_020c9c24.c
++src/unnamed/ov007/func_ov007_020c9d90.cpp
++src/unnamed/ov007/func_ov007_020c9f10.c
++src/unnamed/ov007/func_ov007_020c9fa0.cpp
++src/unnamed/ov007/func_ov007_020ca010.c
++src/unnamed/ov007/func_ov007_020ca1d4.cpp
++src/unnamed/ov007/func_ov007_020ca578.c
++src/unnamed/ov007/func_ov007_020ca5f0.cpp
++src/unnamed/ov007/func_ov007_020ca86c.cpp
++src/unnamed/ov007/func_ov007_020caeac.cpp
++src/unnamed/ov007/func_ov007_020cb3dc.c
++src/unnamed/ov007/func_ov007_020cb4b0.cpp
++src/unnamed/ov007/func_ov007_020cb7c0.cpp
++src/unnamed/ov007/func_ov007_020cba78.c
++src/unnamed/ov007/func_ov007_020cbb04.cpp
++src/unnamed/ov007/func_ov007_020cbbb0.cpp
++src/unnamed/ov007/func_ov007_020cbf8c.c
++src/unnamed/ov022/__sinit_ov022_02113050.cpp
++src/unnamed/ov075/__sinit_ov075_0211bb00.c
++src/unnamed/ov075/__sinit_ov075_0211c51c.c
++port/unmatched/ModelComponents_Render.cpp
+diff --git a/port/vita/tests/smoke_romimage.cpp b/port/vita/tests/smoke_romimage.cpp
+new file mode 100644
+index 0000000..6fef2d8
+--- /dev/null
++++ b/port/vita/tests/smoke_romimage.cpp
+@@ -0,0 +1,100 @@
++// Gate-10 smoke (GCC / PS Vita): the whole game links, and its ROM-resident
++// globals load from the user's own dump with every embedded pointer patched.
++//
++// The binary holds all of src/ (asm dropped, the host's own natives in
++// port/vita/game_host.cpp); port/tools/romimage.py generated storage for the
++// ~15,700 globals no C source defines and a table of ~13,100 DS pointers
++// inside them. This test runs the startup fill and then follows pointer
++// chains that cross modules, without running the game:
++//
++//   ACTOR_SPAWN_TABLE (ARM9 .data) -> a profile in overlay storage ->
++//   the profile's classInit -> the actor factory compiled from src/
++//
++// For the arrow sign (actor 0x12b) the chain must end at
++// daObjYajirusi_c_classInit_YAJIRUSI_L, the very function gate 9 ran.
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++
++extern "C" {
++bool sm64ds_romimage_load(const char *rom_path);
++extern unsigned sm64ds_romimage_filled, sm64ds_romimage_missing;
++int *daObjYajirusi_c_classInit_YAJIRUSI_L(void);
++int *daObjYajirusi_c_classInit_YAJIRUSI_R(void);
++}
++struct Profile { void *classInit; unsigned short behaviorPriority, renderPriority; };
++extern Profile *ACTOR_SPAWN_TABLE[];
++extern int IDENTITY_MATRIX4X3[12];
++
++#ifndef SM64DS_ROM_PATH
++#define SM64DS_ROM_PATH "ux0:data/sm64ds/sm64ds.nds"
++#endif
++
++static int g_failures;
++#define CHECK(cond) \
++    do { if (!(cond)) { ++g_failures; \
++        fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while (0)
++
++static bool is_ds_address(const void *p)
++{
++    const uintptr_t a = (uintptr_t)p;
++    return a >= 0x01ff8000u && a < 0x02800000u;
++}
++
++int main(void)
++{
++    CHECK(sm64ds_romimage_load(SM64DS_ROM_PATH));
++    printf("  globals filled: %u, outside their module: %u\n",
++           sm64ds_romimage_filled, sm64ds_romimage_missing);
++    CHECK(sm64ds_romimage_filled > 10000);
++    CHECK(sm64ds_romimage_missing == 0);
++    if (sm64ds_romimage_missing) {
++        /* overlays not read: the cross-module chains below would follow
++           unfilled storage, so stop here */
++        fprintf(stderr, "smoke_romimage: %d FAILURE(S)\n", g_failures);
++        return 1;
++    }
++
++    /* a plain table: the 4.12 identity */
++    CHECK(IDENTITY_MATRIX4X3[0] == 0x1000 && IDENTITY_MATRIX4X3[4] == 0x1000 &&
++          IDENTITY_MATRIX4X3[8] == 0x1000 && IDENTITY_MATRIX4X3[1] == 0);
++
++    /* the spawn table: every non-null profile and factory must be a host
++       address now, not a DS one */
++    int profiles = 0, factories = 0, still_ds = 0;
++    /* 391 entries: ACTOR_SPAWN_TABLE runs 0x02090864..0x02090e80 in the ARM9
++       map (config/arm9/symbols.txt), one profile pointer per actor ID */
++    for (int id = 0; id < 391; ++id) {
++        Profile *p = ACTOR_SPAWN_TABLE[id];
++        if (!p) continue;
++        if (is_ds_address(p)) { ++still_ds; continue; }
++        ++profiles;
++        if (p->classInit) {
++            if (is_ds_address(p->classInit)) ++still_ds;
++            else ++factories;
++        }
++    }
++    printf("  spawn table: %d profiles, %d factories, %d DS pointers left\n",
++           profiles, factories, still_ds);
++    CHECK(profiles > 200);
++    CHECK(still_ds == 0);
++
++    Profile *l = ACTOR_SPAWN_TABLE[0x12b], *r = ACTOR_SPAWN_TABLE[0x12c];
++    CHECK(l && r);
++    if (l && r) {
++        printf("  actor 0x12b: profile %p, factory %p (YAJIRUSI_L at %p)\n",
++               (void *)l, l->classInit, (void *)&daObjYajirusi_c_classInit_YAJIRUSI_L);
++        CHECK(l->classInit == (void *)&daObjYajirusi_c_classInit_YAJIRUSI_L);
++        CHECK(r->classInit == (void *)&daObjYajirusi_c_classInit_YAJIRUSI_R);
++        printf("  actor 0x12b priorities: behavior %u, render %u\n",
++               l->behaviorPriority, l->renderPriority);
++    }
++
++    if (g_failures) {
++        fprintf(stderr, "smoke_romimage: %d FAILURE(S)\n", g_failures);
++        return 1;
++    }
++    printf("smoke_romimage: all checks passed (the whole game links and its ROM data "
++           "loads with every pointer patched)\n");
++    return 0;
++}
+diff --git a/src/SharedFilePtr.cpp b/src/SharedFilePtr.cpp
+index 6cb9da0..0afea98 100644
+--- a/src/SharedFilePtr.cpp
++++ b/src/SharedFilePtr.cpp
+@@ -35,6 +35,12 @@
+  * is DS-only. port/hal/fs.cpp supplies Load (the card seam) and an
+  * ABI-portable Construct, and port/hal/gx_upload_bridge.cpp supplies
+  * ReallocateModelFile.
++ *
++ * FULL-GAME HOST BUILD (SM64DS_PORT_FULL, the GCC/PS Vita build of the
++ * whole game): every member except Load compiles here, Construct included --
++ * the per-actor resource handles (model, animation, collision, texture
++ * sequence) all bind to these variants through their TU manifests'
++ * undefined_symbol_aliases. Load stays the card seam's.
+  */
+ 
+ #include "types.h"
+@@ -82,7 +88,7 @@ void Crash(void);
+ int myFS_ReadFile(void *a, void *b, unsigned int c);
+ }
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol func_02017e48
+ extern "C" void *func_02017e48(void *self, unsigned int fileID) {
+     func_02017e0c(self, fileID);
+@@ -215,7 +221,7 @@ void SharedFilePtr::Release() {
+     func_02017c24(this);
+ }
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol func_02017b4c
+ extern "C" void *func_02017b4c(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);
+@@ -229,7 +235,7 @@ extern "C" int SharedFilePtr_Destruct_Clsn(int self) {
+ }
+ #endif
+ 
+-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8) || defined(SM64DS_PORT_FULL)
+ /* Loads a KCL collision file; the first holder rebases its offsets. */
+ // @symbol _ZN7dBgW_Kc8LoadFileER13SharedFilePtr
+ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
+@@ -246,7 +252,7 @@ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol func_02017ae4
+ extern "C" void *func_02017ae4(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);
+@@ -278,7 +284,7 @@ void SharedFilePtr::ReallocateModelFile() {
+ }
+ #endif
+ 
+-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B) || defined(SM64DS_PORT_FULL)
+ /* Loads a BMD model. The first holder rebases its offsets, registers it in
+    the common model data array, and trims its allocation to the real size. */
+ // @symbol _ZN17dExtSimpleModel_c8LoadFileER13SharedFilePtr
+@@ -295,7 +301,7 @@ void *dExtSimpleModel_c::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol func_02017a24
+ extern "C" void *func_02017a24(void *self, unsigned int fileID) {
+     func_02017ae4(self, fileID);
+@@ -339,7 +345,7 @@ extern "C" int SharedFilePtr_Destruct_Anim(int self) {
+ }
+ #endif
+ 
+-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B) || defined(SM64DS_PORT_FULL)
+ /* Loads a BCA animation; the first holder rebases its offsets. */
+ // @symbol _ZN15dExtFrameCtrl_c8LoadFileER13SharedFilePtr
+ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
+@@ -356,7 +362,7 @@ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
+ }
+ #endif
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol SharedFilePtr_Construct_TexSeq
+ extern "C" void *SharedFilePtr_Construct_TexSeq(void *self, unsigned int fileID) {
+     func_02017e48(self, fileID);
+diff --git a/src/engine/gx/G3X.cpp b/src/engine/gx/G3X.cpp
+index 1ea6b55..c8100ac 100644
+--- a/src/engine/gx/G3X.cpp
++++ b/src/engine/gx/G3X.cpp
+@@ -48,7 +48,7 @@ void func_020557b4(void);
+ void func_0205583c(void);
+ }
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ 
+ // G3X_Init
+ extern "C" void func_0205583c(void) {
+@@ -103,7 +103,7 @@ extern "C" void func_02055780(void) {
+         ;
+ }
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ 
+ // G3X_InitMtxStack
+ extern "C" void func_020556d0(void) {
+diff --git a/src/engine/gx/GX.cpp b/src/engine/gx/GX.cpp
+index 17f506e..fb2f18a 100644
+--- a/src/engine/gx/GX.cpp
++++ b/src/engine/gx/GX.cpp
+@@ -37,7 +37,7 @@ namespace GX {
+ /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+    names coincide; MSVC keeps both under different decorations): the port's
+    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN2GX12BeginLoadTexEv
+ void BeginLoadTex() {
+     int r = GX::ResetBankForTex();
+@@ -90,7 +90,7 @@ void LoadTex(const void *src, unsigned int offset, unsigned int size) {
+ /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+    names coincide; MSVC keeps both under different decorations): the port's
+    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN2GX10EndLoadTexEv
+ void EndLoadTex()
+ {
+@@ -108,7 +108,7 @@ void EndLoadTex()
+ /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+    names coincide; MSVC keeps both under different decorations): the port's
+    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN2GX16BeginLoadTexPlttEv
+ void BeginLoadTexPltt() {
+     int r = GX::ResetBankForTexPltt();
+@@ -133,7 +133,7 @@ void LoadTexPltt(const void *src, u32 destSlotAddr, u32 size){
+ /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
+    names coincide; MSVC keeps both under different decorations): the port's
+    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
+-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
++#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN2GX14EndLoadTexPlttEv
+ void EndLoadTexPltt(){
+     u32 dmaId = data_02099fd0;
+diff --git a/src/engine/heap/Heap.cpp b/src/engine/heap/Heap.cpp
+index b6c5694..3b521ad 100644
+--- a/src/engine/heap/Heap.cpp
++++ b/src/engine/heap/Heap.cpp
+@@ -93,6 +93,14 @@ extern "C" void *func_0203cc0c(u32 size) {
+ extern "C" void func_0203cbc0(void *ptr) {
+     Memory::defaultHeapPtr->_Deallocate(ptr);
+ }
++#if defined(SM64DS_PORT_FULL)
++/* The full-game GCC build: the two veneers, over the same game heap (the
++   gate builds take operator_delete2 from port/hal/ctor_bridge.cpp). */
++namespace Memory {
++void *operator_new2(u32 size) { return func_0203cc0c(size); }
++void operator_delete2(void *ptr) { func_0203cbc0(ptr); }
++}
++#endif
+ #else
+ 
+ extern "C" {
+diff --git a/src/runtime/graphics/fader/d_fader.cpp b/src/runtime/graphics/fader/d_fader.cpp
+index 8d19d3b..42dc31b 100644
+--- a/src/runtime/graphics/fader/d_fader.cpp
++++ b/src/runtime/graphics/fader/d_fader.cpp
+@@ -49,7 +49,7 @@ void Matrix4x3_ApplyInPlaceToRotationX(Matrix4x3 *m, short ang);
+ }
+ extern Matrix4x3 data_020a0e68;
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN8dFader_cD0Ev
+ // @symbol _ZN8dFader_cD1Ev
+ // @symbol _ZN8dFader_cD2Ev
+@@ -163,7 +163,7 @@ void dFader_c::AdvanceInterp()
+     ApproachLinear(currInterp, target, step);
+ }
+ 
+-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
++#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
+ // @symbol _ZN10dFdColor_cD0Ev
+ // @symbol _ZN10dFdColor_cD1Ev
+ // @symbol _ZN10dFdColor_cD2Ev

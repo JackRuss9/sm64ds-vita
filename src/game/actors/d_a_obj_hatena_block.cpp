@@ -949,6 +949,11 @@ int daObjHatenaBlock_c::OnAttacked1(dActor_c &other)
             func_ov102_02149da8(STATE_BOUNCING);
         }
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN18daObjHatenaBlock_c8OnKickedER8dActor_c
@@ -990,6 +995,11 @@ int daObjHatenaBlock_c::OnHitFromUnderneath(dActor_c &other)
             func_ov102_02149da8(STATE_BOUNCING);
         }
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol func_ov102_02149684

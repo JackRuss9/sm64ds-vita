@@ -412,9 +412,18 @@ extern "C" void func_02038414(void *self) {
 
 // @symbol func_02038408
 /* func_02038408 @ 0x2038408 (arm9) -- tail-call veneer to func_02036acc (0x2036acc). */
+#if defined(SM64DS_PLATFORM_PC)
+/* Host: forward the dBgCh_Actr the veneer passes through (r0) -- the
+   no-argument spelling only works while GCC emits a bare tail call. */
+extern "C" void func_02036acc_host(void *self) __asm__("func_02036acc");
+extern "C" void func_02038408(void *self) {
+    func_02036acc_host(self);
+}
+#else
 extern "C" void func_02038408(void) {
     func_02036acc();
 }
+#endif
 
 // @symbol dBgCh_Actr_UpdateContinuous_Veneer
 /* dBgCh_Actr_UpdateContinuous_Veneer @ 0x20383fc (arm9) -- tail-call veneer to dBgCh_Actr::UpdateContinuous (0x20366b4).

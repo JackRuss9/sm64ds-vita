@@ -814,5 +814,10 @@ u32 OAM::EnableSubOAM(OamTmp *tmp) {
      * the ROM does not honour: the function falls off its end without
      * setting r0. The `(long) 0` cast is preserved verbatim. */
     data_0209e660 = (long)0;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 

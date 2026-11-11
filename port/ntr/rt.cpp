@@ -1,3 +1,4 @@
+#include <time.h>
 #include "ntr/rt.h"
 
 #include "ntr/mmio.h"
@@ -29,6 +30,10 @@
 #endif
 
 namespace ntr {
+/* Called first on each thread that runs the game (a host port can pin it to
+   a core: port/vita/vita_display.cpp). Optional. */
+extern "C" void sm64ds_thread_started(void) __attribute__((weak));
+
 namespace {
 
 constexpr uint32_t REG_IME = 0x04000208;
@@ -73,18 +78,33 @@ enum Turn { HOST, GAME };
 pthread_mutex_t g_lock;
 pthread_cond_t g_cv;
 bool g_sync_ready = false;
-Turn g_turn = HOST;
+volatile Turn g_turn = HOST;
 bool g_abandon = false;           // host stopped early: the game thread must exit
+
+
+// A wait that re-checks its condition at least every 2 ms. VitaSDK's
+// pthreads (pthreads-embedded) lose a condition-variable wake-up now and then
+// under heavy hand-offs (seen on hardware: the turn given, the waiter asleep
+// for good); the caller's while-loop then picks the change up regardless.
+static void cond_wait_2ms(pthread_cond_t *cv, pthread_mutex_t *m)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += 2000000;
+    if (ts.tv_nsec >= 1000000000) { ts.tv_sec += 1; ts.tv_nsec -= 1000000000; }
+    pthread_cond_timedwait(cv, m, &ts);
+}
 
 void give_turn(Turn to) {         // caller holds g_lock
     g_turn = to;
     pthread_cond_broadcast(&g_cv);
 }
 void wait_turn(Turn mine) {       // caller holds g_lock
-    while (g_turn != mine) pthread_cond_wait(&g_cv, &g_lock);
+    while (g_turn != mine) cond_wait_2ms(&g_cv, &g_lock);
 }
 
 void *game_thread(void *) {
+    if (sm64ds_thread_started) sm64ds_thread_started();
     pthread_mutex_lock(&g_lock);
     wait_turn(GAME);
     pthread_mutex_unlock(&g_lock);
@@ -133,15 +153,32 @@ uint32_t rt_irq_disable() {
     return prev;
 }
 
+void rt_irq_set_masked(bool masked) { g.cpsr_i = masked ? 0x80 : 0; }
+
+static volatile int g_host_stage;
+void rt_debug_state(int *turn, int *host_stage) {
+#if defined(NTR_THREAD_FIBERS)
+    *turn = g_turn == HOST ? 0 : 1;
+#else
+    *turn = -1;
+#endif
+    *host_stage = g_host_stage;
+}
+
+static void (*g_unmask_hook)();
+void rt_set_unmask_hook(void (*hook)()) { g_unmask_hook = hook; }
+
 uint32_t rt_irq_enable() {
     const uint32_t prev = g.cpsr_i;
     g.cpsr_i = 0;
+    if (prev && g_unmask_hook) g_unmask_hook();
     return prev;
 }
 
 uint32_t rt_irq_restore(uint32_t prev) {
     const uint32_t was = g.cpsr_i;
     g.cpsr_i = prev & 0x80;
+    if (was && !g.cpsr_i && g_unmask_hook) g_unmask_hook();
     return was;
 }
 
@@ -181,14 +218,17 @@ uint64_t rt_run(void (*game)(), FrameHook hook, uint64_t max_frames) {
     reg32(REG_IE) = IRQ_VBLANK;
 
     while (!g.game_done && !g.stop) {
+        g_host_stage = 0;
         pthread_mutex_lock(&g_lock);          // run the game until it blocks
         give_turn(GAME);
         wait_turn(HOST);
         pthread_mutex_unlock(&g_lock);
         if (g.game_done) break;
 
+        g_host_stage = 1;
         run_scanlines();
         ++g.frame;
+        g_host_stage = 2;
         if (g.hook && !g.hook(g.frame)) g.stop = true;
         if (g.max_frames && g.frame >= g.max_frames) g.stop = true;
         reg32(REG_IF) &= ~IRQ_VBLANK;

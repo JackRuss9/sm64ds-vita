@@ -147,6 +147,22 @@ void *map_fixed(uintptr_t base, size_t size) {
 
 // C spelling for include/nitro/hw/registers.h's relocated register macros,
 // which C translation units expand too.
+// A store through a pointer aimed at a 3D geometry port (include/gx_port_write.h):
+// the pointer may be the DS address itself or the host's copy of the register
+// (whatever the address rewriting made of it); either way the write goes to the
+// port's handler. A pointer that is no port is stored to, as it was written.
+extern "C" void ntr_gx_port_store(volatile void *port, unsigned int value) {
+    if (!g_io) io_init();
+    const uintptr_t p = reinterpret_cast<uintptr_t>(port);
+    uint32_t ds = 0;
+    if (p >= 0x04000400u && p <= 0x040005FFu) ds = static_cast<uint32_t>(p);
+    else if (g_io && p >= reinterpret_cast<uintptr_t>(g_io) + 0x400u &&
+             p <= reinterpret_cast<uintptr_t>(g_io) + 0x5FFu)
+        ds = 0x04000000u + static_cast<uint32_t>(p - reinterpret_cast<uintptr_t>(g_io));
+    if (ds) io_write(ds & ~3u, value, 4);
+    else *static_cast<volatile uint32_t *>(port) = value;
+}
+
 extern "C" void *ntr_host_ptr(unsigned int ds_address) {
     if (!g_io) io_init();
     return host_ptr(ds_address);
@@ -179,6 +195,15 @@ bool io_init() {
 
 uint64_t io_read(uint32_t addr, unsigned width) {
     if (!g_io && !io_init()) return 0;
+    // GXSTAT reads the drained FIFO whatever sits in memory: a store that
+    // reached the register without io_write (through a pointer, a fill)
+    // must not leave MI_SendGXCommandAsync waiting for "under half" -- the
+    // intro cutscene's first model draw did, for good.
+    if (addr == 0x04000600u && width == 4) {
+        uint32_t st = static_cast<uint32_t>(raw_read(addr, 4));
+        st = (st & ~(0x0F000000u | 0x01FF0000u)) | 0x06000000u;
+        return st;
+    }
     return raw_read(addr, width);
 }
 
@@ -186,15 +211,36 @@ void io_write(uint32_t addr, uint64_t value, unsigned width) {
     if (!g_io && !io_init()) return;
     raw_write(addr, value, width);
 
-    // Writing the low half of the operand is what starts the unit on hardware.
-    if (addr == DIV_DENOM || addr == DIV_NUMER || addr == DIVCNT) run_divide();
-    else if (addr == SQRT_PARAM || addr == SQRTCNT) run_sqrt();
+    // GXSTAT (0x4000600): the FIFO's state bits are read-only on hardware and
+    // the host's FIFO is always drained -- empty (26), under half (25), not
+    // busy (27), no entries (16-24) -- whatever a store put there; bit 15
+    // (the stack error) is cleared by writing 1. G3X_Init stores 0 there,
+    // which left the stage's asynchronous display-list sends
+    // (MI_SendGXCommandAsync) waiting for "under half" forever.
+    if (addr <= 0x04000603u && addr + width > 0x04000600u) {
+        uint32_t st = static_cast<uint32_t>(raw_read(0x04000600u, 4));
+        st = (st & ~(0x0F000000u | 0x01FF0000u | 0x8000u)) | 0x06000000u;
+        raw_write(0x04000600u, st, 4);
+    }
+
+    // Any store to a unit's control or operands restarts it, on hardware as
+    // here -- the high halves too: a 64-bit operand stored as two words, low
+    // then high, must use the high word just written, not the one before.
+    if (addr < DIV_RESULT && addr + width > DIVCNT) run_divide();
+    else if (addr < SQRT_PARAM + 8 && addr + width > SQRTCNT && !(addr >= SQRT_RESULT && addr + width <= SQRT_RESULT + 4)) run_sqrt();
     // Geometry: 0x4000400 is the packed FIFO, 0x4000440.. are the command ports.
     // These execute on write and leave nothing readable behind, so unlike every
     // other block they cannot be served by the memory window alone.
     else if (addr == 0x04000400u) gx_write_fifo(static_cast<uint32_t>(value));
     else if (addr >= 0x04000440u && addr <= 0x040005FFu)
         gx_write_port(addr, static_cast<uint32_t>(value));
+    // VRAMCNT_A..I (any store width covering them): the banks move.
+    if (addr <= 0x04000249u && addr + width > 0x04000240u)
+        for (unsigned i = 0; i < width; ++i) {
+            const uint32_t a = addr + i;
+            if (a >= 0x04000240u && a <= 0x04000249u && a != 0x04000247u)
+                vram_cnt_write(a, static_cast<uint8_t>(value >> (8 * i)));
+        }
 }
 
 }  // namespace ntr

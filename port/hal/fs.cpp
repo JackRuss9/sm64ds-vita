@@ -27,6 +27,7 @@
 // C decode; the DS asm's halfword write dance is VRAM-safety only, the
 // output bytes are identical (smoke_fs cross-checks against values computed
 // by an independent Python decoder).
+#include "ntr/mmio.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,6 +178,9 @@ const char *sm64ds_fs_handle_path(unsigned handle)
 /* ov0 handle -> FAT file id (data_ov000_020bd4b8 on the DS) */
 u16 func_02018a24(u32 handle)
 {
+    // As the DS does: 0x8000 and up is a file inside an archive (the
+    // archive's base id plus its index) and passes through unchanged.
+    if (handle >= 0x8000) return (u16)handle;
     catalog_load();
     if (handle >= MAX_HANDLES || g_paths[g_handle_to_id[handle]][0] == 0) {
         fprintf(stderr, "FATAL: fs handle %u not in catalog\n", handle);
@@ -188,8 +192,11 @@ u16 func_02018a24(u32 handle)
 /* LZ77 type-0x10 decode; src points at the u32 header */
 void DecompressLZ16(void *src_, void *dst_)
 {
-    const u8 *s = (const u8 *)src_;
-    u8 *d = (u8 *)dst_;
+    // Callers pass DS addresses as often as host pointers (VRAM and palette
+    // targets: d_meter, the minigames, LoadCompressedFileAt); host_ptr is the
+    // identity on host pointers.
+    const u8 *s = (const u8 *)::ntr::host_ptr((uintptr_t)src_);
+    u8 *d = (u8 *)::ntr::host_ptr((uintptr_t)dst_);
     u32 size = (s[0] | s[1] << 8 | s[2] << 16 | (u32)s[3] << 24) >> 8;
     u32 out = 0;
     s += 4;
@@ -224,6 +231,26 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
 
     catalog_load();
     data_0209d3bc = self->fileID;
+#if defined(SM64DS_FS_ROM) && defined(SM64DS_PORT_FULL)
+    // A file inside an archive (id 0x8000 and up): the game's own loader,
+    // func_0201818c, finds it in the mounted archive (LoadArchive) and copies
+    // or decompresses it out, exactly as the DS's SharedFilePtr::Load does.
+    if (self->fileID >= 0x8000) {
+        extern int func_0201818c(unsigned int id, int flush);
+        self->filePtr = (void *)(uintptr_t)func_0201818c(self->fileID, 0);
+        if (!self->filePtr)
+            fprintf(stderr, "fs: archived file 0x%04x did not load\n", self->fileID);
+        static unsigned logged;
+        if (logged++ < 64) {
+            const u8 *b = (const u8 *)self->filePtr;
+            printf("  fs: archived file 0x%04x -> %p:", self->fileID, self->filePtr);
+            for (int i = 0; b && i < 16; ++i) printf(" %02x", b[i]);
+            printf("\n");
+            fflush(stdout);
+        }
+        return self->filePtr;
+    }
+#endif
     if (self->fileID >= MAX_FILES || g_paths[self->fileID][0] == 0) {
         fprintf(stderr, "FATAL: fs fileID %u not in catalog "
                 "(archive-interior ids >= 0x8000 not hosted yet)\n",
@@ -278,7 +305,9 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
     return dst;
 }
 
-/* Construct: host ABI spells out both args (see header comment) */
+/* Construct: host ABI spells out both args (see header comment). The
+   full-game build takes src/SharedFilePtr.cpp's own (SM64DS_PORT_FULL). */
+#if !defined(SM64DS_PORT_FULL)
 void func_02017e0c(void *self, u32 arg); /* portable src/ */
 struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
         struct SharedFilePtrC *self, u32 ov0FileID)
@@ -286,6 +315,7 @@ struct SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(
     func_02017e0c(self, ov0FileID);
     return self;
 }
+#endif
 } /* extern "C" */
 
 /* The seam above is spelled as a C function because that is how src/ reached it

@@ -64,6 +64,11 @@ int daDonketu_c::InitResources() {
     mBigBullyID = 0;
     mFileTable = (int)&data_ov064_0211b834;
     InitResourcesCommon();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN11daDonketu_c8BehaviorEv

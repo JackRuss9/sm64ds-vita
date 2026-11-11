@@ -1,0 +1,9 @@
+# Gate-8 additions for GCC builds (PS Vita).
+#
+# Under the Itanium ABI the real dBgW_Kc vtable is emitted with
+# d_bg_w_kc_itcm.cpp and names every slot, including the byte-matched
+# DetectClsn(dBgCh_SphCrr&). On MSVC the port's synthetic table leaves that
+# slot as a trap, so the sphere query's callees were never needed. Here
+# they are linked for real instead of stubbed.
+src/engine/collision/d_bg_ch_sph_crr.cpp
+src/DotVec3.c

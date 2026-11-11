@@ -802,6 +802,11 @@ extern "C" int func_ov014_02111af0(daWanwan_c *c) {
     c->func_ov014_02111ebc(1);
 adv:
     static_cast<dExtFrameCtrl_c &>(c->mAnmModel).Advance();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol func_ov014_02111a6c
@@ -985,6 +990,11 @@ extern "C" int func_ov014_0211150c(daWanwan_c *c) {
         if (DecIfAbove0_Short(&c->mActionTimer) == 0)
             c->func_ov014_02111ebc(1);
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol func_ov014_021114d8

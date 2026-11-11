@@ -119,3 +119,8 @@ venv/
 .vs/
 Thumbs.db
 desktop.ini
+# Vita port: the user's own LiveArea pictures and built packages
+port/vita/livearea/*.png
+port/vita/livearea/*.jpg
+*.vpk
+*.psp2dmp

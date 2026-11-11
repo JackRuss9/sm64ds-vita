@@ -1033,6 +1033,11 @@ int daObjTatefuda_c::OnAttacked1(dActor_c &other)
     if (isCode) {
         Kill();
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* -------------------------------------------------------------------------- */

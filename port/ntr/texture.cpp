@@ -28,7 +28,7 @@ inline uint32_t with_alpha(uint32_t argb, uint32_t a) {
 
 inline uint16_t pal_at(const uint8_t *pal, int32_t pal_len, uint32_t idx) {
     const uint32_t off = idx * 2u;
-    if (off + 1 >= static_cast<uint32_t>(pal_len)) return 0;
+    if (!pal || pal_len <= 0 || off + 1 >= static_cast<uint32_t>(pal_len)) return 0;
     return static_cast<uint16_t>(pal[off] | (pal[off + 1] << 8));
 }
 

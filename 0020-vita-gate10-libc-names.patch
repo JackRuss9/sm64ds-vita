@@ -1,0 +1,99 @@
+diff --git a/port/tools/hostexterns.py b/port/tools/hostexterns.py
+index d715701..93251a5 100644
+--- a/port/tools/hostexterns.py
++++ b/port/tools/hostexterns.py
+@@ -653,6 +653,27 @@ def rename_libc_defs(lines):
+     return out
+ 
+ 
++def _private_names():
++    import os
++    f = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vita', 'game_private_names.txt')
++    try:
++        return {l.strip() for l in open(f) if l.strip() and not l.startswith('#')}
++    except OSError:
++        return set()
++
++
++PRIVATE = _private_names()
++
++
++def private_labels(lines):
++    """asm labels naming a game-private runtime name (see
++    port/vita/game_private_names.txt) bind to its sm64ds_game_ spelling."""
++    if not PRIVATE:
++        return lines
++    rx = re.compile(r'__asm__\("(%s)"\)' % '|'.join(map(re.escape, sorted(PRIVATE))))
++    return [rx.sub(lambda m: '__asm__("sm64ds_game_%s")' % m.group(1), l) for l in lines]
++
++
+ def split_goto_inits(lines):
+     """In a TU that uses goto, every block-scope `T x = e;` (non-const scalar
+     T) becomes `T x; x = e;`. g++ rejects a goto that jumps past an
+@@ -697,6 +718,7 @@ def main():
+     renamed = rename_libc_defs(out)
+     libc_hdr = renamed != out
+     out = renamed
++    out = private_labels(out)
+     # mwccarm intrinsics these TUs use, spelled for g++
+     prelude = ['// host copy: port/tools/hostexterns.py\n',
+                '#include <string.h>\n',
+diff --git a/port/tools/romimage.py b/port/tools/romimage.py
+index 20ceb6a..2222790 100644
+--- a/port/tools/romimage.py
++++ b/port/tools/romimage.py
+@@ -301,8 +301,13 @@ def main():
+                 o.write('alignas(8) static unsigned char %s[%d] __attribute__((used, section("%s.rim.%s")));\n'
+                         % (c_ident(i), s['size'], sec, c_ident(i)))
+         o.write('\n')
++        priv_f = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vita', 'game_private_names.txt')
++        priv = set()
++        if os.path.exists(priv_f):
++            priv = {l.strip() for l in open(priv_f) if l.strip() and not l.startswith('#')}
+         for i, n in enumerate(ext_names):
+-            o.write('extern unsigned char rimx_%d __asm__("%s");\n' % (i, n))
++            o.write('extern unsigned char rimx_%d __asm__("%s");\n'
++                    % (i, ('sm64ds_game_' + n) if n in priv else n))
+         xid = {n: i for i, n in enumerate(ext_names)}
+         o.write('\nconst RimFill rim_fills[] = {\n')
+         for i in fills:
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index c9490ee..198e422 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -528,6 +528,16 @@ foreach(h hal/heap_globals.cpp hal/fs.cpp hal/romfs.cpp hal/romimage_rt.cpp vita
+ endforeach()
+ set_source_files_properties(${G10_HAL} PROPERTIES
+     COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
++# the game's runtime names that the host libraries also define stay the game's
++file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/game_private_names.txt" G10_PRIV_LINES)
++set(G10_PRIV_DEFS "")
++foreach(l IN LISTS G10_PRIV_LINES)
++    string(STRIP "${l}" l)
++    if(NOT l STREQUAL "" AND NOT l MATCHES "^#")
++        list(APPEND G10_PRIV_DEFS "${l}=sm64ds_game_${l}")
++    endif()
++endforeach()
++set_source_files_properties(${G10_SRCS} PROPERTIES COMPILE_DEFINITIONS "${G10_PRIV_DEFS}")
+ add_library(gate10_game OBJECT ${G10_SRCS} ${G10_HAL})
+ target_include_directories(gate10_game PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
+     "${PORT_DIR}/ntr/include" "${PORT_DIR}/hal")
+diff --git a/port/vita/game_private_names.txt b/port/vita/game_private_names.txt
+new file mode 100644
+index 0000000..078885a
+--- /dev/null
++++ b/port/vita/game_private_names.txt
+@@ -0,0 +1,13 @@
++# Names the game's own runtime (MSL, src/) defines that the host C/C++
++# libraries define too. In the full-game GCC build every game TU sees each as
++# sm64ds_game_<name> (definition and callers alike: the game's fflush works on
++# the game's own FILE records, so its callers must keep reaching it), and the
++# host libraries keep theirs. port/tools/hostexterns.py and romimage.py apply
++# the same mapping to the asm labels they emit.
++fflush
++raise
++copysign
++fabs
++frexp
++ldexp
++__cxa_vec_delete

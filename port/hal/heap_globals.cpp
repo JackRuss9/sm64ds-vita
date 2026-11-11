@@ -196,6 +196,11 @@ extern "C" MemoryNode::Target *_ZN10MemoryNode6TargetC1EPS_(
 // accepts -- so the slice can no longer compile the src/ definition. The body
 // is the one src/cstd4.cpp carries.
 namespace cstd {
+/* Weak off MSVC: the full-game GCC build compiles src/cstd4.cpp (its asm
+   dropped), whose own cstd::abs then takes over. */
+#if !defined(_MSC_VER)
+__attribute__((weak))
+#endif
 int abs(int x)
 {
     return x < 0 ? -x : x;

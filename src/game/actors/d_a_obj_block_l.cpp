@@ -181,6 +181,11 @@ int daObjBlockL_c::OnAttacked2(dActor_c &other) {
         return;
     }
     Kill();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN13daObjBlockL_c11OnAttacked1ER8dActor_c
@@ -190,6 +195,11 @@ int daObjBlockL_c::OnAttacked1(dActor_c &other) {
     if (IsActorID(this, 0x11))
         return;
     Kill();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN13daObjBlockL_c15OnGroundPoundedER8dActor_c

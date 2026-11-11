@@ -72,6 +72,11 @@ int daObjFl_Ukiyuka_c::InitResources() {
         break;
     }
     InitResourcesFrom(&data_ov022_021140d4[mVariant], kBobAmplitude);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* 8-byte file handles. Both models use func_02017acc / func_02017ab4 and

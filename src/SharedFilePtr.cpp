@@ -35,6 +35,12 @@
  * is DS-only. port/hal/fs.cpp supplies Load (the card seam) and an
  * ABI-portable Construct, and port/hal/gx_upload_bridge.cpp supplies
  * ReallocateModelFile.
+ *
+ * FULL-GAME HOST BUILD (SM64DS_PORT_FULL, the GCC/PS Vita build of the
+ * whole game): every member except Load compiles here, Construct included --
+ * the per-actor resource handles (model, animation, collision, texture
+ * sequence) all bind to these variants through their TU manifests'
+ * undefined_symbol_aliases. Load stays the card seam's.
  */
 
 #include "types.h"
@@ -82,7 +88,7 @@ void Crash(void);
 int myFS_ReadFile(void *a, void *b, unsigned int c);
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol func_02017e48
 extern "C" void *func_02017e48(void *self, unsigned int fileID) {
     func_02017e0c(self, fileID);
@@ -215,7 +221,7 @@ void SharedFilePtr::Release() {
     func_02017c24(this);
 }
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol func_02017b4c
 extern "C" void *func_02017b4c(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);
@@ -229,7 +235,7 @@ extern "C" int SharedFilePtr_Destruct_Clsn(int self) {
 }
 #endif
 
-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE8) || defined(SM64DS_PORT_FULL)
 /* Loads a KCL collision file; the first holder rebases its offsets. */
 // @symbol _ZN7dBgW_Kc8LoadFileER13SharedFilePtr
 char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
@@ -246,7 +252,7 @@ char *dBgW_Kc::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol func_02017ae4
 extern "C" void *func_02017ae4(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);
@@ -278,7 +284,7 @@ void SharedFilePtr::ReallocateModelFile() {
 }
 #endif
 
-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B) || defined(SM64DS_PORT_FULL)
 /* Loads a BMD model. The first holder rebases its offsets, registers it in
    the common model data array, and trims its allocation to the real size. */
 // @symbol _ZN17dExtSimpleModel_c8LoadFileER13SharedFilePtr
@@ -295,7 +301,7 @@ void *dExtSimpleModel_c::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol func_02017a24
 extern "C" void *func_02017a24(void *self, unsigned int fileID) {
     func_02017ae4(self, fileID);
@@ -339,7 +345,7 @@ extern "C" int SharedFilePtr_Destruct_Anim(int self) {
 }
 #endif
 
-#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_GATE4B) || defined(SM64DS_PORT_FULL)
 /* Loads a BCA animation; the first holder rebases its offsets. */
 // @symbol _ZN15dExtFrameCtrl_c8LoadFileER13SharedFilePtr
 char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
@@ -356,7 +362,7 @@ char *dExtFrameCtrl_c::LoadFile(SharedFilePtr &ptr) {
 }
 #endif
 
-#if !defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)
+#if (!defined(_MSC_VER) && !defined(SM64DS_PLATFORM_PC)) || defined(SM64DS_PORT_FULL)
 // @symbol SharedFilePtr_Construct_TexSeq
 extern "C" void *SharedFilePtr_Construct_TexSeq(void *self, unsigned int fileID) {
     func_02017e48(self, fileID);

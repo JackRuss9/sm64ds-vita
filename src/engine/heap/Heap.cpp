@@ -93,6 +93,14 @@ extern "C" void *func_0203cc0c(u32 size) {
 extern "C" void func_0203cbc0(void *ptr) {
     Memory::defaultHeapPtr->_Deallocate(ptr);
 }
+#if defined(SM64DS_PORT_FULL)
+/* The full-game GCC build: the two veneers, over the same game heap (the
+   gate builds take operator_delete2 from port/hal/ctor_bridge.cpp). */
+namespace Memory {
+void *operator_new2(u32 size) { return func_0203cc0c(size); }
+void operator_delete2(void *ptr) { func_0203cbc0(ptr); }
+}
+#endif
 #else
 
 extern "C" {

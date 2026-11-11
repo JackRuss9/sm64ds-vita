@@ -34,6 +34,12 @@ struct RayS {
     unsigned char tail[0x10];
 };
 
+#if !defined(_MSC_VER)
+/* The walk's stage counters live in the port/unmatched draft. Builds that use
+   the byte-matched walk from src/ instead have none; this weak zero table
+   stands in so the trail prints zeros rather than failing to link. */
+extern "C" __attribute__((weak)) int g_walk_dbg[16] = {0};
+#endif
 extern "C" {
 extern int g_walk_dbg[16];
 struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
@@ -46,6 +52,7 @@ static int probe_one(dBgW_Kc *mc, RayS *ray)
 {
     return mc->dBgW_Kc::DetectClsn(*(dBgCh_Lin *)ray);
 }
+#if defined(_WIN32)
 static int probe_filter(EXCEPTION_POINTERS *ep)
 {
     char *base = (char *)GetModuleHandleA(0);
@@ -62,6 +69,11 @@ static int probe_seh(dBgW_Kc *mc, RayS *ray)
         return -1;
     }
 }
+#else
+/* No SEH off Windows: a fault in the walk ends the run, and the platform's
+   crash report (a Vita core dump) carries the address instead. */
+static int probe_seh(dBgW_Kc *mc, RayS *ray) { return probe_one(mc, ray); }
+#endif
 
 static int g_failures;
 #define CHECK(cond) \
@@ -99,9 +111,14 @@ int main(void)
                f->xMask, f->yMask, f->zMask, f->coordShift, f->yShift, f->zShift);
     }
 
-    /* vertical probes over a grid derived from the file's own octree box
-       (origin and mask extents are in raw units = Fix12i >> 6) */
-    /* origin is Fix12i; the mask extents count 0x40-fx cells */
+    /* vertical probes over a grid derived from the file's own octree box.
+       The box (origin, mask extents) is in the file's RAW units, 1/64 of a
+       Fix12i -- the byte-matched walk in d_bg_w_kc_itcm.cpp shifts the
+       ray's endpoints right by 6 on entry (the DS's own `asr #6'), so the
+       ray itself is Fix12i, as the game's callers pass it. The grid is laid
+       out in raw units below and scaled to Fix12i (RAW_TO_FX) where it meets
+       the ray. (The old port/unmatched draft took fx endpoints unshifted,
+       which is what this test was first written against.) */
     KCL_File *f = (KCL_File *)kcl;
     const int ex_ = (int)(~f->xMask + 1) << 6, ez_ = (int)(~f->zMask + 1) << 6;
     const int ey_ = (int)(~f->yMask + 1) << 6;
@@ -118,13 +135,18 @@ int main(void)
             ray.head[4] = 1;    /* the dBgCh "collide with ordinary surfaces"
                                    default (_ZN5dBgChC2Ev sets it; the pass-
                                    through predicate reads head[4] & 1) */
-            ray.sx = cx + gx * sx_step; ray.sy = top; ray.sz = cz + gz * sz_step;
-            ray.ex = ray.sx;            ray.ey = bot; ray.ez = ray.sz;
+#define RAW_TO_FX(v) ((v) * 64)
+            ray.sx = RAW_TO_FX(cx + gx * sx_step); ray.sy = RAW_TO_FX(top);
+            ray.sz = RAW_TO_FX(cz + gz * sz_step);
+            ray.ex = ray.sx; ray.ey = RAW_TO_FX(bot); ray.ez = ray.sz;
             ray.clsnDist = 0x7FFFFFF;
             int r = probe_seh(mc, &ray);
             if (r && ray.hasClsn) {
                 ++hits;
-                if (ray.ey < top && ray.ey > bot) ++shortened;
+                if (ray.ey < RAW_TO_FX(top) && ray.ey > RAW_TO_FX(bot)) ++shortened;
+                if (hits == 1)
+                    printf("  first hit: (%d, %d, %d) fx under probe (%d, %d)\n",
+                           ray.ex, ray.ey, ray.ez, ray.sx, ray.sz);
                 /* result layout (func_02037fd4 + func_02037de8): +0x4 the
                    8-byte CLPS entry, +0xC the normal Vector3, +0x18 triIdx.
                    Normal Y is therefore +0x10. */

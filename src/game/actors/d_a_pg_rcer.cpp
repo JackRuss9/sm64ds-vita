@@ -646,6 +646,11 @@ int func_ov019_0211140c(daPgRcer_c *self, dBgCh_Actr *clsn)
     if (clsn->IsOnWall()) {
         clsn->GetWallResult()->surface.CopyNormalTo(wallNormal);
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 }
 

@@ -645,6 +645,11 @@ void daOts_c::func_ov064_021165d8()
 /* Slot 31, called from STATE_CHASE. Empty here; every child overrides it. */
 int daOts_c::UpdateRunState()
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */

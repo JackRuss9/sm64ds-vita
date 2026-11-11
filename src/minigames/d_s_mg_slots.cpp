@@ -1137,6 +1137,11 @@ void SlotBet_Place(char *icon) {
 int dScMgSlot1_c::CloseMenu() {
     dScMgBase_c::CloseMenu();
     SetSubBg1Offset(0x100, 0);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN12dScMgSlot1_c8OpenMenuEv

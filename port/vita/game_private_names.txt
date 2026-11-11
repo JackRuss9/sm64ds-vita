@@ -1,0 +1,13 @@
+# Names the game's own runtime (MSL, src/) defines that the host C/C++
+# libraries define too. In the full-game GCC build every game TU sees each as
+# sm64ds_game_<name> (definition and callers alike: the game's fflush works on
+# the game's own FILE records, so its callers must keep reaching it), and the
+# host libraries keep theirs. port/tools/hostexterns.py and romimage.py apply
+# the same mapping to the asm labels they emit.
+fflush
+raise
+copysign
+fabs
+frexp
+ldexp
+__cxa_vec_delete

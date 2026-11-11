@@ -141,6 +141,9 @@ void *ntr_host_ptr(unsigned int ds_address);
 #define REG_POWCNT1 (*((volatile u16 *)ntr_host_ptr(0x04000304)))
 #undef REG_DMA_BASE
 #define REG_DMA_BASE (((volatile u32 *)ntr_host_ptr(0x040000b0)))
+#undef REG_DMA_FILL_ADDR
+#define REG_DMA_FILL_ADDR(channel) \
+    ((u32)(unsigned long)ntr_host_ptr(0x040000e0 + ((channel) << 2)))
 #undef REG_IE
 #define REG_IE (*((volatile u32 *)ntr_host_ptr(0x04000210)))
 #undef REG_IF

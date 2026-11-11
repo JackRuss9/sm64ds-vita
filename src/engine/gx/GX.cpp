@@ -37,7 +37,7 @@ namespace GX {
 /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
    names coincide; MSVC keeps both under different decorations): the port's
    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN2GX12BeginLoadTexEv
 void BeginLoadTex() {
     int r = GX::ResetBankForTex();
@@ -90,7 +90,7 @@ void LoadTex(const void *src, unsigned int offset, unsigned int size) {
 /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
    names coincide; MSVC keeps both under different decorations): the port's
    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN2GX10EndLoadTexEv
 void EndLoadTex()
 {
@@ -108,7 +108,7 @@ void EndLoadTex()
 /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
    names coincide; MSVC keeps both under different decorations): the port's
    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN2GX16BeginLoadTexPlttEv
 void BeginLoadTexPltt() {
     int r = GX::ResetBankForTexPltt();
@@ -133,7 +133,7 @@ void LoadTexPltt(const void *src, u32 destSlotAddr, u32 size){
 /* GCC/Clang PC hosts take port/hal/model_host.cpp's no-op instead (there the
    names coincide; MSVC keeps both under different decorations): the port's
    VRAM is one flat CPU-visible window, so there are no banks to unmap. */
-#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER))
+#if !(defined(SM64DS_PLATFORM_PC) && !defined(_MSC_VER)) || defined(SM64DS_PORT_FULL)
 // @symbol _ZN2GX14EndLoadTexPlttEv
 void EndLoadTexPltt(){
     u32 dmaId = data_02099fd0;

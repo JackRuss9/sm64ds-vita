@@ -34,6 +34,11 @@ extern "C" unsigned int _ZN3IRQ7RestoreEj(unsigned int prev) {
 // BIOS SWI wrappers. These are .c files in the decomp, so C++ linkage.
 // ---------------------------------------------------------------------------
 
+// NTR_GAME_OWNS_IRQ (the full-game build): the game's own interrupt table and
+// OS_IrqHandler logic run on the host (port/vita/irq_host.cpp), which also
+// provides these three -- each one waits for the frame and then delivers the
+// VBlank interrupt the DS would have taken.
+#if !defined(NTR_GAME_OWNS_IRQ)
 void VBlankIntrWait(void) { ntr::rt_vblank_wait(); }
 
 // swi 0x04. The game only ever waits on VBlank in practice.
@@ -41,6 +46,7 @@ void IntrWait(void) { ntr::rt_vblank_wait(); }
 
 // swi 0x06 -- halt until an interrupt. Same thing here.
 void Halt(void) { ntr::rt_vblank_wait(); }
+#endif
 
 // swi 0x03 -- burn `count` loop iterations. Nothing to wait for on a host.
 void WaitByLoop(void) {}
@@ -149,6 +155,7 @@ int MIi_GXDmaParams[8];                                /* GX-DMA state */
 struct { unsigned handler, active, arg; } data_020a60c4[8]; /* per-channel cbs */
 }
 
+#if !defined(NTR_GAME_OWNS_IRQ)
 namespace {
 unsigned g_ie;                      // IE word stand-in
 void (*g_gxfifo_handler)(void);     // handler for mask 0x200000
@@ -171,6 +178,18 @@ extern "C" unsigned _ZN3IRQ11DisableIRQsEj(unsigned mask) {
     return prev;
 }
 extern "C" void _ZN3IRQ15ClearInterruptsEj(unsigned) {}
+#else
+// The game's registry (src/engine/os/OS_Interrupt.cpp) and the IE register.
+extern "C" void *_ZN3IRQ13GetIRQHandlerEj(unsigned mask);
+namespace {
+inline unsigned game_ie() { return NTR_MMIO(uint32_t, 0x04000210); }
+inline void (*gxfifo_handler())(void) {
+    return reinterpret_cast<void (*)(void)>(_ZN3IRQ13GetIRQHandlerEj(0x200000u));
+}
+}  // namespace
+#define g_ie (game_ie())
+#define g_gxfifo_handler (gxfifo_handler())
+#endif
 
 // MSVC-only: under GCC/Clang (Itanium ABI) the extern "C" spellings above
 // already ARE these C++ symbols, so the forwarders would redefine them.
@@ -198,14 +217,44 @@ unsigned Restore(unsigned prev) { return _ZN3IRQ7RestoreEj(prev); }
 }  // namespace IRQ
 #endif  // _MSC_VER IRQ forwarders
 
+// A DMA transfer, done at once (GBATEK "DS DMA Transfers"). The control word
+// decides the unit -- bit 26: 32-bit words, else 16-bit halfwords, `count`
+// of them (bits 0-20) -- and how each address moves: source bits 23-24 and
+// destination bits 21-22 (0 up, 1 down, 2 fixed; destination 3 up then
+// reload). The fills (MI_DmaFill32) are a fixed source: the channel's fill
+// register, read over and over. Taking every transfer as incrementing
+// 32-bit words used to turn each fill into a copy of the I/O registers that
+// follow the fill register (the sprite garbage on both screens), and each
+// 16-bit copy (MI_DmaCopy16: palettes) into one twice its size.
+//
 // DMA to the FIFO is the display-list path (MIi_FIFOCallback). ctrl bit 30 is
 // IRQ-on-complete (the final chunk); a GXFIFO-destined chunk without it relies
 // on the half-empty IRQ to pump the next chunk.
 extern "C" void DMAStartTransfer(int ch, int src, int dst, int ctrl) {
-    const int words = ctrl & 0x1FFFFF;
-    copy_words(reinterpret_cast<const uint32_t *>(static_cast<uintptr_t>(src)),
-               reinterpret_cast<uint32_t *>(static_cast<uintptr_t>(dst)), words);
-    if (ntr::is_ds(static_cast<uintptr_t>(dst), 0x04000400u)) {
+    const int count = ctrl & 0x1FFFFF;
+    const bool w32 = ctrl & (1 << 26);
+    const unsigned sctl = (static_cast<unsigned>(ctrl) >> 23) & 3;
+    const unsigned dctl = (static_cast<unsigned>(ctrl) >> 21) & 3;
+    const uintptr_t s0 = static_cast<uintptr_t>(static_cast<unsigned>(src));
+    const uintptr_t d0 = static_cast<uintptr_t>(static_cast<unsigned>(dst));
+    if (ntr::is_ds(d0, GXFIFO)) {
+        // the geometry FIFO: words, the source walking up (or held)
+        const uint32_t *s = static_cast<const uint32_t *>(ntr::host_ptr(s0));
+        for (int i = 0; i < count; ++i) ntr::gx_write_fifo(sctl == 2 ? s[0] : s[i]);
+    } else if (sctl == 0 && dctl == 0 && w32) {
+        copy_words(reinterpret_cast<const uint32_t *>(s0), reinterpret_cast<uint32_t *>(d0), count);
+    } else {
+        const int unit = w32 ? 4 : 2;
+        const int sstep = sctl == 2 ? 0 : sctl == 1 ? -unit : unit;
+        const int dstep = dctl == 2 ? 0 : dctl == 1 ? -unit : unit;
+        uint8_t *s = static_cast<uint8_t *>(ntr::host_ptr(s0));
+        uint8_t *d = static_cast<uint8_t *>(ntr::host_ptr(d0));
+        for (int i = 0; i < count; ++i, s += sstep, d += dstep) {
+            if (w32) *reinterpret_cast<volatile uint32_t *>(d) = *reinterpret_cast<volatile uint32_t *>(s);
+            else *reinterpret_cast<volatile uint16_t *>(d) = *reinterpret_cast<volatile uint16_t *>(s);
+        }
+    }
+    if (ntr::is_ds(d0, GXFIFO)) {
         if (ctrl & 0x40000000) {
             const unsigned h = data_020a60c4[ch & 7].handler;
             if (h) reinterpret_cast<void (*)(unsigned)>(h)(data_020a60c4[ch & 7].arg);

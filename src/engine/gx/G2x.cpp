@@ -11,6 +11,9 @@
  * G2x_SetBlendBrightnessExt_, is not in this ROM: nothing calls it, so the
  * linker dropped it.
  */
+#if defined(SM64DS_PLATFORM_PC)
+extern "C" void *ntr_host_ptr(unsigned int ds_address);    /* port/ntr/io.cpp */
+#endif
 #include "G2x.h"
 #include "types.h"
 
@@ -29,6 +32,11 @@
  * resolves them into the single origin the hardware actually takes. */
 void G2x::SetBGyAffine(volatile unsigned short *p, Matrix2x2 *m, int a, int b, int c, int d)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* Host: callers pass the register's DS address (some through an int
+       variable); host_ptr gives the host's register file, host pointers pass. */
+    p = (decltype(p))ntr_host_ptr((unsigned int)(unsigned long)p);
+#endif
     u16 pa = (u16)(s16)(m->m00 >> 4);
     u16 pb = (u16)(s16)(m->m01 >> 4);
     *(volatile unsigned int *)p = pa | (pb << 16);
@@ -51,6 +59,11 @@ void G2x::SetBGyAffine(volatile unsigned short *p, Matrix2x2 *m, int a, int b, i
    argument is 32-bit: the ROM loads its stack slot with `ldr`, not `ldrh`. */
 void G2x::SetBlendAlpha(volatile u16 *reg, int firstTarget, int secondTarget, int firstAlpha,
                         int secondAlpha) {
+#if defined(SM64DS_PLATFORM_PC)
+    /* Host: callers pass the register's DS address (some through an int
+       variable); host_ptr gives the host's register file, host pointers pass. */
+    reg = (decltype(reg))ntr_host_ptr((unsigned int)(unsigned long)reg);
+#endif
     *(volatile u32 *)reg =
         ((firstTarget | 0x40) | (secondTarget << 8)) |
         ((firstAlpha | (secondAlpha << 8)) << 16);
@@ -63,6 +76,11 @@ void G2x::SetBlendAlpha(volatile u16 *reg, int firstTarget, int secondTarget, in
  * white) and writes the value as-is. So one signed argument carries both
  * "which way" and "how much". */
 void G2x::SetBlendBrightness(volatile unsigned short *p, int val, int amt) {
+#if defined(SM64DS_PLATFORM_PC)
+    /* Host: callers pass the register's DS address (some through an int
+       variable); host_ptr gives the host's register file, host pointers pass. */
+    p = (decltype(p))ntr_host_ptr((unsigned int)(unsigned long)p);
+#endif
     if (amt < 0) {
         p[0] = val | 0xc0;
         p[2] = -amt;
@@ -80,6 +98,11 @@ void G2x::SetBlendBrightness(volatile unsigned short *p, int val, int amt) {
  * its mode. It stays a free C-linkage function under its linker name, which
  * is how its callers declare it. */
 extern "C" void func_020551f0(volatile unsigned short *p, int amt) {
+#if defined(SM64DS_PLATFORM_PC)
+    /* Host: callers pass the register's DS address (some through an int
+       variable); host_ptr gives the host's register file, host pointers pass. */
+    p = (decltype(p))ntr_host_ptr((unsigned int)(unsigned long)p);
+#endif
     unsigned short h = p[0];
     if (amt < 0) {
         if ((h & 0xc0) == 0x80) {

@@ -69,6 +69,16 @@ template <class T> inline T *host_ptr_t(uintptr_t addr) {
     return static_cast<T *>(host_ptr(addr));
 }
 
+// VRAM banks (port/ntr/vram.cpp): a VRAMCNT_x store, and where the 3D
+// engine's texture-image / texture-palette offsets live under the current
+// mapping (0 if no bank; *avail = bytes left in that bank).
+void vram_cnt_write(uint32_t addr, uint8_t value);
+uint32_t vram_tex_addr(uint32_t off, uint32_t *avail);
+uint32_t vram_pltt_addr(uint32_t off, uint32_t *avail);
+void vram_restore_state();          // mapping from VRAMCNT as it stands, no copies
+uint32_t vram_ext_pltt(int eng, bool obj, unsigned slot);
+bool vram_3d_banks(bool palettes);   // any bank mapped as texture (A-D) / texture palette (E-G)   // extended palette slot (8 KB), 0 if none
+
 uint64_t io_read(uint32_t addr, unsigned width);
 void     io_write(uint32_t addr, uint64_t value, unsigned width);
 
@@ -86,6 +96,16 @@ struct Reg {
     Reg &operator|=(T v) { return *this = static_cast<T>(static_cast<T>(*this) | v); }
     Reg &operator&=(T v) { return *this = static_cast<T>(static_cast<T>(*this) & v); }
     Reg &operator^=(T v) { return *this = static_cast<T>(static_cast<T>(*this) ^ v); }
+
+    // `&REG_IME`: game code that keeps a register's address in a plain
+    // `volatile T *` (PXI_InitFifo, the Luigi minigame's IME save) gets the
+    // register's backing word in the host IO block. Accesses through that
+    // pointer read and write the register's storage directly; they do not run
+    // io_write's side effects (the DIV/SQRT engines, IRQ acknowledge), which
+    // none of those sites relies on.
+    volatile T *operator&() const {
+        return reinterpret_cast<volatile T *>(host_ptr(addr));
+    }
 };
 
 }  // namespace ntr

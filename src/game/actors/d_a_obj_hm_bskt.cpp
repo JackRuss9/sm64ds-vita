@@ -147,6 +147,11 @@ int daObjHmBskt_c::CheckLanding(dBgCh_Actr *clsn) {
     Particle::System::NewSimple(0xb, mPosX, mPosY, mPosZ);
     Particle::System::NewSimple(0xd, mPosX, mPosY, mPosZ);
     MarkForDestruction();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* _ZN13daObjHmBskt_cD1Ev and _ZN13daObjHmBskt_cD0Ev are NOT WRITTEN HERE ON

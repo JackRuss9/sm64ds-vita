@@ -378,7 +378,11 @@ bool PlaySub(unsigned int a, unsigned int b, unsigned int c, int d, bool e) {
     int x;
     if (c == 0) {
         /* e is bool. A plain test compiles to ldrb; retail loads the whole word. */
+#if defined(SM64DS_PLATFORM_PC)
+        if (!e) { /* host: a bool argument is one byte; the word load is the DS's */
+#else
         if (!*(int *)&e) {
+#endif
             x = data_0208e430;
             if ((x >= 0 && x != (int)a) ||
                 (data_0209b49c == 0 && data_0208e42c == (int)b && data_0209b490 == (int)(b << 12)))
@@ -386,7 +390,11 @@ bool PlaySub(unsigned int a, unsigned int b, unsigned int c, int d, bool e) {
         }
     } else {
         x = data_0208e430;
+#if defined(SM64DS_PLATFORM_PC)
+        if (x < 0 || e) {
+#else
         if (x < 0 || *(int *)&e) { /* same full-word load as above */
+#endif
             if (x != (int)a) {
                 data_0208e430 = a;
                 if (a != 0x35 && a != 0x36) {

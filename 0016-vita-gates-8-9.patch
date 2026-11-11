@@ -1,0 +1,540 @@
+diff --git a/port/hal/clsn_vtable.cpp b/port/hal/clsn_vtable.cpp
+index 81eb32a..cc23db8 100644
+--- a/port/hal/clsn_vtable.cpp
++++ b/port/hal/clsn_vtable.cpp
+@@ -14,6 +14,12 @@
+ #include "dBgCh.h"
+ #include "SurfaceInfo.h"
+ 
++// Under GCC/Clang (Itanium ABI) every C spelling below IS the C++ symbol the
++// compiler emits, and the real _ZTV7dBgW_Kc/_ZTV10dBgW_KcMbg come out of their
++// key-function TUs with the ROM's slot order. So the forwarders and the
++// synthetic MSVC tables exist only for MSVC; elsewhere hal_fill_mmc_vtable is
++// a no-op.
++#if defined(_MSC_VER)
+ namespace cstd {
+ int sqrt(unsigned long long);
+ int fdiv_result();
+@@ -80,3 +86,6 @@ void hal_fill_mmc_vtable(void)
+         _ZTV10dBgW_KcMbg[i] = _ZTV7dBgW_Kc[i];
+ }
+ }
++#else
++extern "C" void hal_fill_mmc_vtable(void) {}
++#endif
+diff --git a/port/hal/model_host.cpp b/port/hal/model_host.cpp
+index 9d962db..cda6c74 100644
+--- a/port/hal/model_host.cpp
++++ b/port/hal/model_host.cpp
+@@ -134,9 +134,17 @@ short data_020a4bc0;
+ short data_020a4bc4;
+ 
+ /* processing-list heads the actor lifecycle links into */
+-int data_020a4b78[4];
+-int data_020a4b88[4];
+-int data_020a4b98[4];
++/* The actor processing-list heads. src/runtime/actor/ActorBase.cpp owns
++   them once the actor gate links it; under GCC that definition and these
++   meet in one link, so here they are weak (MSVC never sees both). */
++#if !defined(_MSC_VER)
++#define SM64DS_HOST_WEAK __attribute__((weak))
++#else
++#define SM64DS_HOST_WEAK
++#endif
++SM64DS_HOST_WEAK int data_020a4b78[4];
++SM64DS_HOST_WEAK int data_020a4b88[4];
++SM64DS_HOST_WEAK int data_020a4b98[4];
+ int data_02099f24[4];
+ 
+ // ---- common model data array (BSS on the DS) ------------------------------
+diff --git a/port/tests/smoke_clsn.cpp b/port/tests/smoke_clsn.cpp
+index 6e112dc..87764bf 100644
+--- a/port/tests/smoke_clsn.cpp
++++ b/port/tests/smoke_clsn.cpp
+@@ -34,6 +34,12 @@ struct RayS {
+     unsigned char tail[0x10];
+ };
+ 
++#if !defined(_MSC_VER)
++/* The walk's stage counters live in the port/unmatched draft. Builds that use
++   the byte-matched walk from src/ instead have none; this weak zero table
++   stands in so the trail prints zeros rather than failing to link. */
++extern "C" __attribute__((weak)) int g_walk_dbg[16] = {0};
++#endif
+ extern "C" {
+ extern int g_walk_dbg[16];
+ struct SharedFilePtrC { u16 fileID; u8 numRefs; void *filePtr; };
+@@ -46,6 +52,7 @@ static int probe_one(dBgW_Kc *mc, RayS *ray)
+ {
+     return mc->dBgW_Kc::DetectClsn(*(dBgCh_Lin *)ray);
+ }
++#if defined(_WIN32)
+ static int probe_filter(EXCEPTION_POINTERS *ep)
+ {
+     char *base = (char *)GetModuleHandleA(0);
+@@ -62,6 +69,11 @@ static int probe_seh(dBgW_Kc *mc, RayS *ray)
+         return -1;
+     }
+ }
++#else
++/* No SEH off Windows: a fault in the walk ends the run, and the platform's
++   crash report (a Vita core dump) carries the address instead. */
++static int probe_seh(dBgW_Kc *mc, RayS *ray) { return probe_one(mc, ray); }
++#endif
+ 
+ static int g_failures;
+ #define CHECK(cond) \
+diff --git a/port/vita/CMakeLists.txt b/port/vita/CMakeLists.txt
+index f434c16..d8eab86 100644
+--- a/port/vita/CMakeLists.txt
++++ b/port/vita/CMakeLists.txt
+@@ -41,6 +41,10 @@ get_filename_component(REPO_DIR "${PORT_DIR}/.." ABSOLUTE)
+ # are deliberate. -fno-strict-aliasing keeps GCC from optimizing them away;
+ # the warnings are silenced so a real error stays visible.
+ set(SM64DS_FLAGS -fno-strict-aliasing -w -ffunction-sections -fdata-sections)
++# mwccarm accepts a bare `return;` in a non-void function (the ROM's own
++# daObjYajirusi_c::OnAttacked1 has one, slot type int, no value on either
++# path); g++ only does with -fpermissive.
++list(APPEND SM64DS_FLAGS $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>)
+ # vita_create_self needs the relocations kept in the ELF.
+ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-q")
+ # Function-level linking, as the PC port gets from MSVC (/Gy + /OPT:REF): each
+@@ -399,3 +403,62 @@ sm64ds_vita_gate(gate7 SMDS00012 "SM64DS Gate 7" tests/smoke_modelanim.cpp
+             SM64DS_OUT_DIR="ux0:data/sm64ds" PORT_REPO_ROOT=".")
+ target_sources(gate7 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} "${ROMDATA_VITA}")
+ target_link_libraries(gate7 PRIVATE ntr)
++
++# Gate 8: collision. The castle grounds KCL (handle 1941) loads through the
++# card seam, LoadFile rebases it, and the game's octree walk answers 25
++# vertical ground probes. On the Vita the real dBgW_Kc vtable comes out of
++# its key-function TU (GCC, Itanium layout = the ROM's), so the synthetic MSVC
++# table in hal/clsn_vtable.cpp and the C-name forwarders are MSVC-only.
++# The walk is the byte-matched dBgW_Kc::DetectClsn(dBgCh_Lin&) in
++# src/engine/collision/d_bg_w_kc_itcm.cpp; the old host draft in port/unmatched
++# that slice_gate8.txt still names predates that match, no longer compiles
++# (its private dBgCh_Lin lacks SetClsnPos) and would define the method twice.
++# Also not linked: hal/bg_ctor_bridge.cpp (MSVC vtable-emission traps and C-name
++# ctor forwarders; under GCC src/ defines all of them) and hal/cstd_div.c (the
++# host divide; here src/cstd.cpp comes through hostgen and the divide runs on
++# the ntr DIV register model, as on the DS).
++sm64ds_vita_hostgen(GATE8_GEN _ZN4cstd4sqrtEy _ZN4cstd11fdiv_resultEv
++    _ZN4cstd16reciprocal_asyncEi Matrix4x3_ApplyInPlaceToScale)
++sm64ds_vita_gate(gate8 SMDS00013 "SM64DS Gate 8" tests/smoke_clsn.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++        hal/clsn_vtable.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt slice_gate8.txt
++           vita/slice_gate8_extra.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC} ${GATE8_GEN_SRC}
++            "${REPO_DIR}/port/unmatched/MeshCollider_DetectClsn_RaycastLine.cpp"
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B SM64DS_PORT_GATE8
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT=".")
++target_sources(gate8 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} ${GATE8_GEN} "${ROMDATA_VITA}")
++target_link_libraries(gate8 PRIVATE ntr)
++
++# Gate 9: the actor framework. A real actor (daObjYajirusi_c, the arrow sign)
++# comes out of its factory, loads its model and collider, behaves and
++# renders -- every lifecycle call through its real vptr. Uses the GCC edition
++# of the test (port/vita/tests/smoke_actor.cpp; see its header for why).
++# Under GCC the compiler emits every vtable in this hierarchy with the ROM's
++# slot order, so hal/actor_vtables.cpp, hal/actor_ctor_bridge.cpp,
++# hal/cxxname_bridge.cpp and hal/bg_ctor_bridge.cpp (synthetic MSVC tables,
++# C-name forwarders, a C transcription of fBase_c's ctor that src/ now has as
++# real C++) are not linked; port/vita/actor_host.cpp holds the storage and the
++# few primitives no sliced TU defines yet.
++sm64ds_vita_hostgen(GATE9_GEN _ZN7fBase_c21AfterCleanupResourcesEj)
++sm64ds_vita_gate(gate9 SMDS00014 "SM64DS Gate 9" vita/tests/smoke_actor.cpp
++    HAL hal/heap_globals.cpp hal/os_arena.cpp hal/heap_vtable.cpp hal/fs.cpp
++        hal/romfs.cpp hal/romdata_rom.cpp
++        hal/model_host.cpp hal/gx_upload_bridge.cpp hal/ctor_bridge.cpp
++        hal/clsn_vtable.cpp vita/actor_host.cpp
++    SLICES slice_gate2.txt slice_gate3a.txt slice_gate3b.txt slice_gate4b.txt
++           slice_gate7.txt slice_gate8.txt vita/slice_gate8_extra.txt slice_gate9.txt
++           vita/slice_gate9_extra.txt
++    EXCLUDE ${GATE4A_GEN_SRC} ${GATE4B_GEN_SRC} ${GATE8_GEN_SRC} ${GATE9_GEN_SRC}
++            "${REPO_DIR}/port/unmatched/MeshCollider_DetectClsn_RaycastLine.cpp"
++    DEFINES SM64DS_FS_ROM SM64DS_VITA_PREINIT SM64DS_PORT_GATE4B SM64DS_PORT_GATE8
++            SM64DS_ROM_PATH="ux0:data/sm64ds/sm64ds.nds" PORT_REPO_ROOT=".")
++target_sources(gate9 PRIVATE ${GATE4A_GEN} ${GATE4B_GEN} ${GATE8_GEN} ${GATE9_GEN} "${ROMDATA_VITA}")
++# Drop shadows stay deferred (see port/vita/actor_host.cpp).
++target_link_options(gate9 PRIVATE
++    -Wl,--wrap=_ZN17dExtShadowModel_c10InitCuboidEv
++    -Wl,--wrap=_ZN8dActor_c18DropShadowScaleXYZER17dExtShadowModel_cR9Matrix4x3iiih)
++target_link_libraries(gate9 PRIVATE ntr)
+diff --git a/port/vita/actor_host.cpp b/port/vita/actor_host.cpp
+new file mode 100644
+index 0000000..3546974
+--- /dev/null
++++ b/port/vita/actor_host.cpp
+@@ -0,0 +1,172 @@
++// Gate-9 host storage and primitives for GCC builds (PS Vita).
++//
++// The MSVC build gets these from hal/actor_vtables.cpp, hal/cxxname_bridge.cpp
++// and hal/actor_ctor_bridge.cpp, mixed in with synthetic vtables and C-name
++// forwarders that only make sense under MSVC. Under GCC only the residue is
++// needed, collected here:
++//
++//   * storage for globals whose defining TUs no gate builds yet (the DS
++//     keeps them in arm9/overlay .data/.bss; zero is their boot state, or the
++//     smoke seeds them). Itanium does not mangle namespace-scope variables, so
++//     one plain definition satisfies every C and C++ reference;
++//   * the two asm primitives (no C body in src/) and the zero-fill veneer;
++//   * the subsystems an arrow sign touches only when it is destroyed or
++//     knocked about -- particles, sound, the death table, the camera shake --
++//     as no-ops (cosmetic, nothing to host yet) or loud traps (state the gate
++//     must not reach).
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "ntr/mmio.h"
++
++typedef unsigned int u32;
++struct Vector3;
++struct Player { void IncMegaKillCount(); };
++struct dClipper { int ClipSphere(Vector3 &, int, unsigned char *); };
++namespace Particle { struct System { static void NewSimple(u32, int, int, int); }; }
++namespace Sound { void PlayBank3(u32, const Vector3 &); }
++
++[[noreturn]] static void host_trap(const char *who)
++{
++    fprintf(stderr, "FATAL: %s reached; port/vita/actor_host.cpp only links "
++                    "it (the subsystem is not hosted yet)\n", who);
++    abort();
++}
++
++// ---- storage -------------------------------------------------------------
++#define HOST_BSS(name, bytes) alignas(8) unsigned char name[bytes]
++
++extern "C" {
++/* spawn context fBase_c::fBase_c reads (staged by func_02043180) */
++unsigned short data_020a4b54;           /* pending actor ID */
++unsigned char data_020a4b48;            /* pending area byte */
++u32 data_020a4b60;                      /* pending param1 */
++void *data_020a4b64;                    /* pending parent node */
++void *data_020a4b68;
++u32 data_02099e70;                      /* next unique actor id */
++/* actorID -> profile (classInit + two list priorities) */
++void *data_020a4bb8_storage[0x200];
++void **data_020a4bb8 = data_020a4bb8_storage;
++void *data_020a0eac;                    /* the actor heap (smoke: root heap) */
++
++/* ov098's resource columns for the arrow signs: {model, kcl, clps} rows,
++   one symbol per column (the DS addresses overlap at +0/+4/+8) */
++void *data_ov098_0213c380[6];
++void *data_ov098_0213c384[6];
++void *data_ov098_0213c388[6];
++
++/* player list: the smoke installs one stand-in */
++void *data_0209f394[8];
++unsigned char data_0209f21c;
++
++/* actor-world globals, boot state zero */
++HOST_BSS(data_020a0e68, 0x40);          /* shared scratch Matrix4x3 */
++HOST_BSS(data_020a0c80, 0x80);          /* collision actor registry */
++HOST_BSS(data_020a0d60, 0x10);          /* Vector3 */
++HOST_BSS(data_020a0d1c, 0x40);          /* dBgPi */
++HOST_BSS(data_0209cef4, 0x10);          /* shadow scale globals */
++HOST_BSS(data_0209ceec, 0x10);
++HOST_BSS(data_0209b458, 0x8);
++HOST_BSS(data_0209b450, 0x8);
++HOST_BSS(data_0209b44c, 0x4);
++HOST_BSS(data_0209b45c, 0x4);           /* spawn default rotation (null) */
++HOST_BSS(data_0209b460, 0x4);           /* spawn default position (null) */
++HOST_BSS(data_0209b464, 0x4);
++HOST_BSS(data_0208e378, 0x4);
++HOST_BSS(data_0208e37c, 0x8);
++HOST_BSS(data_0208e380, 0x8);
++HOST_BSS(data_0209fc68, 0x4);
++HOST_BSS(data_0209f43c, 0x100);         /* the dClipper instance */
++HOST_BSS(data_0209f318, 0x4);           /* the camera (none) */
++HOST_BSS(data_0209f2d8, 0x4);           /* mega-char state: none */
++HOST_BSS(data_0209f2c4, 0x4);
++HOST_BSS(data_0209f294, 0x4);
++HOST_BSS(data_0209f274, 0x4);
++HOST_BSS(data_0209f20c, 0x4);
++HOST_BSS(data_02099f48, 0x8);
++HOST_BSS(data_02099f50, 0x10);
++HOST_BSS(data_02099f60, 0x8);
++HOST_BSS(data_02099f68, 0x8);
++HOST_BSS(data_02099f70, 0x8);
++/* dExtShadowModel_c's cuboid template BMD, built at runtime by boot code the
++   port does not host yet (the ov000 image holds path strings there) */
++HOST_BSS(data_ov000_020ad524, 0x40);
++}
++
++// ---- primitives ----------------------------------------------------------
++extern "C" {
++/* asm primitive (src/engine/mi/MI_Memory.c): 48-byte block copy */
++void Copy48Bytes(int *src, int *dst)
++{
++    int *s = (int *)::ntr::host_ptr((uintptr_t)src);
++    int *d = (int *)::ntr::host_ptr((uintptr_t)dst);
++    for (int i = 0; i < 12; ++i) d[i] = s[i];
++}
++/* asm primitive: 4x3 fx32 Y rotation from (sin, cos):
++   rows {c,0,-s},{0,1,0},{s,0,c},{0,0,0} */
++void func_02052820(int *m, int s, int c)
++{
++    m[0] = c; m[1] = 0;      m[2] = -s;
++    m[3] = 0; m[4] = 0x1000; m[5] = 0;
++    m[6] = s; m[7] = 0;      m[8] = c;
++    m[9] = 0; m[10] = 0;     m[11] = 0;
++}
++/* the X and Z siblings (NitroSDK MTX_RotX43_ / MTX_RotZ43_ order, which the
++   Y one between them confirms): X rows {1,0,0},{0,c,s},{0,-s,c};
++   Z rows {c,s,0},{-s,c,0},{0,0,1} */
++void func_02052800(int *m, int s, int c)
++{
++    m[0] = 0x1000; m[1] = 0;  m[2] = 0;
++    m[3] = 0;      m[4] = c;  m[5] = s;
++    m[6] = 0;      m[7] = -s; m[8] = c;
++    m[9] = 0; m[10] = 0; m[11] = 0;
++}
++void func_0205283c(int *m, int s, int c)
++{
++    m[0] = c;  m[1] = s; m[2] = 0;
++    m[3] = -s; m[4] = c; m[5] = 0;
++    m[6] = 0;  m[7] = 0; m[8] = 0x1000;
++    m[9] = 0; m[10] = 0; m[11] = 0;
++}
++/* fBase_c::operator new's zero fill. Its DS body (src/cstd4.cpp) is a
++   register-threaded chain into the block-fill primitives; the semantics are
++   memset's. */
++void func_0206e2f8(void *p, int v, unsigned n) { memset(p, v, n); }
++
++/* camera shake (dActor_c::Earthquake) */
++void func_0200d8c8(void) { host_trap("func_0200d8c8 (camera earthquake)"); }
++/* Sound::Play of bank 3 at a position: no audio yet */
++int func_02012694(int, void *) { return 0; }
++/* area visibility and the per-level death table: only the processing-list
++   paths (BeforeInitResources / BeforeBehavior / OnTurnIntoEgg) read them, and
++   the smoke drives the lifecycle methods directly */
++unsigned char IsAreaShowing(int) { host_trap("IsAreaShowing"); }
++int DeathTable_GetBit(int) { host_trap("DeathTable_GetBit"); }
++void DeathTable_SetBit(int) { host_trap("DeathTable_SetBit"); }
++}
++
++/* particles and sound: cosmetic, not hosted yet */
++void Particle::System::NewSimple(u32, int, int, int) {}
++void Sound::PlayBank3(u32, const Vector3 &) {}
++/* the horizontal angle the mega-char knockback takes (Vec3_HorzAngle); the
++   real atan2 runs on ITCM helpers and an arm9 table no gate hosts yet */
++namespace cstd { int atan2(int, int); }
++int cstd::atan2(int, int) { host_trap("cstd::atan2"); }
++/* the Player gates own these */
++void Player::IncMegaKillCount() { host_trap("Player::IncMegaKillCount"); }
++int dClipper::ClipSphere(Vector3 &, int, unsigned char *) { host_trap("dClipper::ClipSphere"); }
++
++// ---- drop shadows: deferred, as on the MSVC build ------------------------
++// dExtShadowModel_c::InitCuboid hands SetFile the cuboid template BMD at
++// data_ov000_020ad524, which boot code builds at runtime and the port does not
++// host yet (here it is zeroed storage, and the vertex walk would read it as a
++// model). The MSVC build replaces InitCuboid with `return 1` and
++// DropShadowScaleXYZ with a no-op (hal/cxxname_bridge.cpp). The GCC build
++// keeps src/'s definitions and diverts the calls instead: the gate links with
++// --wrap for both symbols, so every call lands here.
++extern "C" {
++int __wrap__ZN17dExtShadowModel_c10InitCuboidEv(void *) { return 1; }
++void __wrap__ZN8dActor_c18DropShadowScaleXYZER17dExtShadowModel_cR9Matrix4x3iiih(
++    void *, void *, void *, int, int, int, unsigned char) {}
++}
+diff --git a/port/vita/slice_gate8_extra.txt b/port/vita/slice_gate8_extra.txt
+new file mode 100644
+index 0000000..1ef408f
+--- /dev/null
++++ b/port/vita/slice_gate8_extra.txt
+@@ -0,0 +1,9 @@
++# Gate-8 additions for GCC builds (PS Vita).
++#
++# Under the Itanium ABI the real dBgW_Kc vtable is emitted with
++# d_bg_w_kc_itcm.cpp and names every slot, including the byte-matched
++# DetectClsn(dBgCh_SphCrr&). On MSVC the port's synthetic table leaves that
++# slot as a trap, so the sphere query's callees were never needed. Here
++# they are linked for real instead of stubbed.
++src/engine/collision/d_bg_ch_sph_crr.cpp
++src/DotVec3.c
+diff --git a/port/vita/slice_gate9_extra.txt b/port/vita/slice_gate9_extra.txt
+new file mode 100644
+index 0000000..0e71cd2
+--- /dev/null
++++ b/port/vita/slice_gate9_extra.txt
+@@ -0,0 +1,22 @@
++# Gate-9 additions for GCC builds (PS Vita).
++#
++# Under the Itanium ABI the compiler emits the real dActor_c / dBgActor_c /
++# dBgW_KcMbg vtables, and with them every slot: the small geometry and
++# ground-ray classes they name are linked for real here (the MSVC build
++# traps those slots instead; see hal/actor_ctor_bridge.cpp).
++src/engine/collision/d_m3d_g_sph.cpp
++src/engine/collision/d_m3d_g_lin.cpp
++src/engine/collision/d_bg_ch_gnd.cpp
++src/runtime/actor/ActorDerived.cpp
++# Small vector/matrix helpers the dActor_c and dBgActor_c bodies call (spawn
++# transform, clip centre, mega-char knockback); plain C, no hardware.
++src/Vec3_Add.c
++src/AddVec3.c
++src/Vec3_Asr.c
++src/Vec3_HorzAngle.cpp
++src/DecIfAbove0_Byte.c
++src/Matrix4x3_FromTranslation.c
++src/Matrix4x3_ApplyInPlaceToRotationZXYExt.c
++src/Matrix4x3_ApplyInPlaceToTranslation.c
++src/Matrix4x3_FromRotationX.c
++src/Matrix4x3_FromRotationZ.c
+diff --git a/port/vita/tests/smoke_actor.cpp b/port/vita/tests/smoke_actor.cpp
+new file mode 100644
+index 0000000..7f2c801
+--- /dev/null
++++ b/port/vita/tests/smoke_actor.cpp
+@@ -0,0 +1,149 @@
++// Gate-9 smoke, GCC/Itanium edition (PS Vita): a real actor lives its
++// lifecycle on host.
++//
++// Same gate as port/tests/smoke_actor.cpp, rewritten for builds where the
++// compiler's ABI is the ROM's. That test was written for an MSVC host and
++// for an earlier state of the decomp: it calls the factory by its old name
++// (ArrowSignRight_Spawn), seeds the ov098 file table as one mixed array, and
++// dispatches through a hand-built MSVC vtable with __thiscall casts. At this
++// commit the actor is daObjYajirusi_c, its three resource columns are
++// separate symbols, and under GCC its vtable is the compiler's own: the
++// Itanium layout, which is the ROM's, emitted from the class's key-function
++// TU. So nothing here fakes dispatch. Every lifecycle call goes through the
++// object's real vptr.
++//
++// What runs:
++//   factory   daObjYajirusi_c_classInit_YAJIRUSI_L: operator new from the
++//             game heap and the full ctor chain (dBgActor_c -> dActor_c ->
++//             fBase_c, with dExtSimpleModel_c, dBgW_KcMbg and dExtShadowModel_c
++//             members), reading the spawn context func_02043180 stages.
++//   init      InitResources: the sign's BMD and KCL through the card seam,
++//             LoadFile rebasing both, the model's SetFile, the mesh collider's
++//             SetFile with the actor's transform.
++//   behavior  four Behavior ticks.
++//   render    Render, which walks the model into the GX; the triangle count
++//             the ntr rasterizer sees is the check.
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++
++#include "ntr/gx.h"
++#include "ntr/mmio.h"
++#include "ntr/ppu.h"
++
++#include "fBase_c.h"
++
++typedef unsigned int u32;
++
++struct ArrowSignFileColumn { void *value; void *pad[2]; };
++struct fBaseActorInfoS { fBase_c *(*classInit)(); unsigned short behaviorPriority, renderPriority; };
++struct SharedFilePtrC { unsigned short fileID; unsigned char numRefs;
++                        unsigned char pad; void *filePtr; };
++
++extern "C" {
++int *daObjYajirusi_c_classInit_YAJIRUSI_L(void);
++void *_ZN5mHeap6Heap_t13SetupRootHeapEv(void);
++SharedFilePtrC *_ZN13SharedFilePtr9ConstructEj(SharedFilePtrC *s, u32 id);
++/* stages the spawn context fBase_c's constructor reads (ActorBase.cpp) */
++void func_02043180(int actorID, void *parentNode, u32 param1, int unk012);
++}
++/* Under the Itanium ABI namespace-scope variables are not mangled, so these
++   bind to src/'s C++ definitions (or to port/vita/actor_host.cpp's storage
++   for the ones that live in TUs no gate builds yet). */
++extern int data_0209b3ec[12];                   /* camera matrix */
++extern fBaseActorInfoS **data_020a4bb8;         /* actorID -> profile */
++extern ArrowSignFileColumn data_ov098_0213c380[];  /* model column */
++extern ArrowSignFileColumn data_ov098_0213c384[];  /* KCL column */
++extern ArrowSignFileColumn data_ov098_0213c388[];  /* CLPS column */
++extern void *data_0209f394[];                   /* the player array */
++extern unsigned char data_0209f21c;             /* player count */
++extern void *data_020a0eac;                     /* the actor heap */
++#include "Memory.h"   /* Memory::defaultHeapPtr */
++
++static int g_failures;
++#define CHECK(cond) \
++    do { if (!(cond)) { ++g_failures; \
++        fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } } while (0)
++
++static void ident_fx(void *m)
++{
++    memset(m, 0, 48);
++    ((int *)m)[0] = ((int *)m)[4] = ((int *)m)[8] = 0x1000;
++}
++
++static void reset_scene()
++{
++    ntr::gx_reset();
++    NTR_MMIO(uint32_t, 0x04000440) = 0;
++    NTR_MMIO(uint32_t, 0x04000454) = 0;
++    NTR_MMIO(uint32_t, 0x04000440) = 1;
++    NTR_MMIO(uint32_t, 0x04000454) = 0;
++    NTR_MMIO(uint32_t, 0x04000580) = 0u | (0u << 8) | (255u << 16) | (191u << 24);
++    ntr::gx_set_light(0, -0.4f, -0.6f, -0.7f, 0x7FFF);
++    ntr::gx_enable_lights(0x1);
++}
++
++int main(void)
++{
++    setvbuf(stdout, NULL, _IONBF, 0);
++    if (!ntr::io_init()) { fprintf(stderr, "io_init failed\n"); return 2; }
++    CHECK(_ZN5mHeap6Heap_t13SetupRootHeapEv() != NULL);
++    ident_fx(data_0209b3ec);
++
++    /* The spawn context dBase_c::Spawn would have staged: actor 0x12b
++       (YAJIRUSI_L, file column 0), its profile's two list priorities, and the
++       ov098 resource columns -- on the DS prebuilt overlay data, here seeded
++       with handle 1177 (the sign's BMD), 1178 (its KCL) and a zeroed CLPS
++       block (the lookup's default path, as in gate 8). */
++    static fBaseActorInfoS profile = {
++        (fBase_c *(*)())daObjYajirusi_c_classInit_YAJIRUSI_L, 100, 100 };
++    data_020a4bb8[0x12b] = &profile;
++    data_020a0eac = Memory::defaultHeapPtr;     /* actors allocate from it */
++    static SharedFilePtrC sign_model, sign_kcl;
++    static char sign_clps[0x100];
++    _ZN13SharedFilePtr9ConstructEj(&sign_model, 1177);
++    _ZN13SharedFilePtr9ConstructEj(&sign_kcl, 1178);
++    data_ov098_0213c380[0].value = &sign_model;
++    data_ov098_0213c384[0].value = &sign_kcl;
++    data_ov098_0213c388[0].value = sign_clps;
++
++    /* A stand-in player: the actor world assumes at least one exists
++       (ClosestPlayer callers dereference without a null check -- on the DS
++       Mario always exists). */
++    static char fake_player[0x800];
++    data_0209f394[0] = fake_player;
++    data_0209f21c = 1;
++
++    func_02043180(0x12b, NULL, 0, 0);
++    fBase_c *actor = profile.classInit();
++    CHECK(actor != NULL);
++    if (!actor) return 1;
++    printf("  spawned actor 0x%x (unique id %u)\n",
++           (unsigned)actor->actorID, (unsigned)actor->uniqueID);
++    CHECK(actor->actorID == 0x12b);
++
++    int init_ok = actor->InitResources();
++    printf("  InitResources -> %d\n", init_ok);
++    CHECK(init_ok == 1);
++
++    reset_scene();
++    for (int f = 0; f < 4; ++f) {
++        int r = actor->Behavior();
++        printf("  tick %d -> %d\n", f, r);
++    }
++    int render_ok = actor->Render();
++    printf("  Render -> %d\n", render_ok);
++
++    size_t tris = 0;
++    ntr::gx_polygons(tris);
++    printf("  triangles from the actor's render: %u\n", (unsigned)tris);
++    CHECK(tris > 0);
++
++    if (g_failures) {
++        fprintf(stderr, "smoke_actor: %d FAILURE(S)\n", g_failures);
++        return 1;
++    }
++    printf("smoke_actor: all checks passed (an actor spawned, initialized, "
++           "behaved and rendered through its real vtable)\n");
++    return 0;
++}

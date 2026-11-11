@@ -1,0 +1,7 @@
+# Data symbols that are raw bytes (compressed graphics, palettes) although the
+# decomp's relocs.txt records 'relocations' inside them: words that only look
+# like addresses. port/tools/romimage.py leaves these bytes as the ROM has them.
+data_020914e0    # boot screen palette (dScBoot_c::InitResources)
+data_02091570    # boot screen sub BG2 tile map, LZ77
+data_020916d8    # boot screen BG0 tile map, LZ77
+data_020918c4    # boot screen tiles (the Nintendo logo), LZ77

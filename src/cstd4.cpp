@@ -481,7 +481,12 @@ extern void *data_0209a438[];
 // @symbol func_0206e218
 int func_0206e218(int a, int b) {
     void **p = (void **)data_0209a438[2];
+#if defined(SM64DS_PLATFORM_PC)
+    /* the ROM returns what the handler left in r0: its length */
+    return ((int (*)(int, int))p[1])(a, b);
+#else
     ((void (*)(int, int))p[1])(a, b);
+#endif
 }
 #pragma pop
 

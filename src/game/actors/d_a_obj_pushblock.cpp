@@ -273,6 +273,11 @@ int daObjPushblock_c::OnPushed(dActor_c &other) {
         else
             mHorzSpeed = 0x4000;
     }
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* -------------------------------------------------------------------------- */

@@ -116,6 +116,11 @@ int daObjBk_Lift_c::StoodOnCallback(dBgW *collider, dActor_c *lift, dActor_c *ri
 int daObjBk_Lift_c::OnStoodOn(dActor_c *rider) {
     mJustSteppedOn = 1;
     mMove = 1;
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN14daObjBk_Lift_c13InitResourcesEv

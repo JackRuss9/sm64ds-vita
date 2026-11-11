@@ -2131,6 +2131,11 @@ int daStar_c::func_ov002_020e8dd8() {
         }
     }
     AddStarMarker();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 // @symbol _ZN8daStar_c13AddStarMarkerEv
@@ -2205,6 +2210,11 @@ volatile unsigned int daStar_c::func_ov002_020e8c34() {
         }
     }
     func_ov002_020e8abc();
+#if defined(SM64DS_PLATFORM_PC)
+    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
+       returning function as unreachable and runs into whatever follows. */
+    return {};
+#endif
 }
 
 /* -------------------------------------------------------------------------- */

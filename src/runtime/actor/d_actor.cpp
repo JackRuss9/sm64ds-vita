@@ -1136,6 +1136,11 @@ void dActor_c::OnGroundPounded(dActor_c &pounder)
  * 0x02010144  size 0x4 */
 int dActor_c::OnAttacked1(dActor_c &attacker)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1144,6 +1149,11 @@ int dActor_c::OnAttacked1(dActor_c &attacker)
  * 0x02010140  size 0x4 */
 int dActor_c::OnAttacked2(dActor_c &attacker)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1160,6 +1170,11 @@ void dActor_c::OnKicked(dActor_c &kicker)
  * 0x02010138  size 0x4 */
 int dActor_c::OnPushed(dActor_c &pusher)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1168,6 +1183,11 @@ int dActor_c::OnPushed(dActor_c &pusher)
  * 0x02010134  size 0x4 */
 int dActor_c::OnHitByCannonBlastedChar(dActor_c &attacker)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1184,6 +1204,11 @@ void dActor_c::OnHitByMegaChar(Player &player)
  * 0x0201012c  size 0x4 */
 int dActor_c::OnHitFromUnderneath(dActor_c &attacker)
 {
+#if defined(SM64DS_PLATFORM_PC)
+    /* An empty body: the ROM returns r0 untouched, `this`. GCC takes falling
+       off a value-returning function as unreachable, so say it. */
+    return (int)(long)this;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
