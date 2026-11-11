@@ -98,6 +98,7 @@ const GxTriangle *gx_polygons(size_t &count);
 // seen, triangles in the last swapped frame, triangles in the frame being built,
 // projection-matrix loads (LOAD/MULT in projection mode).
 void gx_debug_stats(uint32_t out[6]);
+bool gx_debug_tex_source(const uint32_t *tex, uint32_t *teximage, uint32_t *plttbase);
 // Record every executed geometry command (up to max_words 32-bit words) for
 // an offline replay of the exact 3D state: gx_reset() then gx_replay().
 void gx_record_start(size_t max_words);

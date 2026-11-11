@@ -2,20 +2,15 @@
 
 Bugs we've looked at but not solved yet, with what we know so far.
 
-## 1. Peach's crown, in the intro
-- **Seen:** in the intro movie, Peach's crown lies flat instead of sitting on her head. Everything else in the intro looks right.
+## 1. The drawing toy ("Mario drawing") canvas
+- **Seen:** the canvas shows garbage. 0108 fixed it, and 0109 broke it again (the castle's textures came first).
 - **Known:**
-  - The crown is drawn by a separate demo actor (`daDemo`).
-  - The port turns it only left or right (yaw), so it ends up flat compared with the camera-facing scene.
-  - Its forward tilt (X angle) should come from the intro script's record. The handler that sets the angles from that record is `func_ov002_020f6e48`.
-- **Next:** log the angles that handler reads and writes for the crown, and check how the record is read (field offsets, sign of the s16 values).
+  - The canvas is a direct-colour bitmap BG (engine A BG3) in bank D. It's filled every frame by the DS's display capture (DISPCAPCNT `80370010`: engine A's picture into bank D at +0x8000, 256x192).
+  - 0108 added display capture (source A only), and the canvas worked.
+  - But in 0108 a capture aimed at bank A, while A held the castle's textures, wrote over them. So 0109 only writes a capture into a bank in LCDC or engine A BG use (VRAMCNT MST 0 or 1). That stopped the canvas captures as well, so in that frame bank D must be mapped differently from what the snapshot showed (0x81).
+- **Next:** the log's `display capture:` lines (the first 8) give each capture's DISPCAPCNT and the bank's VRAMCNT at that moment. Work out from them which mappings the DS writes into, and allow D's but not A's while A holds textures.
 
-## 2. The drawing toy ("Mario drawing") shows rubbish
-- **Seen:** opening the drawing toy from the main menu shows garbage on the lower screen while it loads.
-- **Known:** the canvas background (engine B, BG3) shows tiles that are still in VRAM from the previous screen before the game draws over them.
-- **Next:** find what clears that VRAM on the DS. It could be a DMA/memory fill the port skips, or display brightness or the BG enable bit keeping it hidden until it's ready. Compare BG3 and VRAMCNT and the master brightness over the first frames.
-
-## 3. The camera at the top of Whomp's Fortress tower (2nd painting, 2nd star)
+## 2. The camera at the top of Whomp's Fortress tower (2nd painting, 2nd star)
 - **Seen:** at some spots near the top of the tower, the camera drops below the spiral stairs. It's back to normal elsewhere, and drops again on returning. The DS camera never drops there.
 - **Known:**
   - It's not a camera mode change. The follow camera stays in mode 10 the whole time.
@@ -32,7 +27,8 @@ Bugs we've looked at but not solved yet, with what we know so far.
 
 ## Also pending
 - VS mode: returns to the title screen (the ov075 lobby crashed).
-- Black doors, and the thing behind King Goomba (Big Goomboss).
+- Black doors, and the thing behind King Goomba (Big Goomboss): check them again with 0107. It fixed textures whose palette goes on into the next palette slot (Bowser's black patches), which may have been the same bug.
 - The camera glitch when Mario's door opens (before the character-switch fix in 0092; check whether it's still there).
 - Music once stopped before Mario's room. It didn't happen again; the `[sound]` lines log it.
+- Menu music playing twice over itself (a "canon") after Adventure -> main menu: the game saw the music player idle right after starting it (the driver's status was written late) and lost track of it. Fixed in 0108; check it.
 - The debugging logs added along the way (camera watch, root-motion trace, camera probes, music lines) all stop after a fixed number of lines. Remove them once these issues are solved.

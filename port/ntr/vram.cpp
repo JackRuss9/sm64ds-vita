@@ -140,6 +140,16 @@ uint32_t vram_tex_addr(uint32_t off, uint32_t *avail)
     return 0;
 }
 
+/* Where bank b's bytes live now (A=0 .. I=8): its 2D view when VRAMCNT puts it
+   in one (the copy the CPU and the 2D engines use), else its home. For the
+   display capture (port/vita/vita_display.cpp), which writes into a bank. */
+uint32_t vram_bank_live(int b, uint32_t *size)
+{
+    if (b < 0 || b > 8) return 0;
+    if (size) *size = kBanks[b].size;
+    return g_view[b] ? g_view[b] : kBanks[b].home;
+}
+
 /* The bank storage behind texture-palette offset `off` (16 KB slots 0..5: E
    covers 0..3 from its offset, F and G one slot each). 0 if none. */
 uint32_t vram_pltt_addr(uint32_t off, uint32_t *avail)

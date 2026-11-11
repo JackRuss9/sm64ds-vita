@@ -197,7 +197,7 @@ struct Driver {
     u32 unknown_op_seen[8];
 } g;
 std::mutex g_lock;
-unsigned g_track_fail, g_end_logs;      // for the log: track pool full, multi-track sequences ending
+unsigned g_track_fail, g_end_logs, g_start_logs;      // for the log: track pool full, multi-track sequences ending
 
 u32 rnd() { g.rng = g.rng * 1664525u + 1013904223u; return g.rng >> 8; }
 
@@ -942,7 +942,15 @@ void track_param(int p, u32 mask, u32 off, u32 data)
 void command(int id, const u32 *a)
 {
     switch (id) {
-    case CMD_START_SEQ: start_seq((int)a[0], ptr<const u8>(a[1]), a[2], ptr<const u8>(a[3])); break;
+    case CMD_START_SEQ:
+        if (g_start_logs < 120) {
+            ++g_start_logs;
+            printf("  [sound] player %u starts a sequence (data %08x + %x, bank %08x)%s\n", (unsigned)a[0],
+                   (unsigned)a[1], (unsigned)a[2], (unsigned)a[3],
+                   a[0] < PLAYERS && g.pl[a[0]].active ? ", replacing the one playing" : "");
+        }
+        start_seq((int)a[0], ptr<const u8>(a[1]), a[2], ptr<const u8>(a[3]));
+        break;
     case CMD_STOP_SEQ:
         if (a[0] < PLAYERS) {
             int nt = 0;
@@ -1143,6 +1151,13 @@ void sm64ds_snd_commands(const void *list)
     std::lock_guard<std::mutex> hold(g_lock);
     unsigned n = 0;
     for (const Cmd *c = static_cast<const Cmd *>(list); c && n < 4096; c = c->next, ++n) command(c->id, c->arg);
+    // The status the game reads (which players and channels are active) as
+    // these commands leave it, before arm7_host.cpp counts the list as done.
+    // On the DS the ARM7 writes it in the same pass; here the output thread
+    // only wrote it at its next sequencer tick, and a game that started a
+    // sequence and looked straight away saw the player idle -- and could
+    // start the music a second time over the first (the menu "canon").
+    write_status();
 }
 
 /* Once, at start-up: the driver, and its output thread on the third core. */

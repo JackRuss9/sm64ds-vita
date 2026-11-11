@@ -68,6 +68,23 @@ struct Copy {
     bool has3d;
 };
 Copy g_copy;
+
+/* The DS's display capture (DISPCAPCNT, 0x04000064): when the game sets bit
+   31, the hardware writes the next frame -- engine A's picture, or the 3D
+   alone -- into a VRAM bank as 15-bit pixels and clears the bit. The menu's
+   drawing toy is built on it: its canvas is a bitmap BG in bank D that is
+   the capture of the last frame (the canvas plus the 3D pen strokes), so the
+   drawing builds up frame by frame. Without it the canvas showed whatever
+   was in bank D before (rows of the title screen). The drawing thread makes
+   the picture from its copy of the frame; the game's thread puts it in the
+   bank at the next frame (sm64ds_display_present) and clears the bit. */
+struct Capture {
+    bool ready;
+    uint32_t cnt;                       // DISPCAPCNT it was made for
+    int w, h;
+    uint16_t px[256 * 192];
+};
+Capture g_cap;
 // Screen layouts (the GPU view; the CPU one stays side by side): where the
 // top and the touch screen go on the 960x544 display, {x, y, w, h}; a zero
 // width hides one. Chosen in the settings menu (below).
@@ -400,6 +417,48 @@ struct HelpJob {
 } g_job;
 constexpr int SPLIT = 96;      // engine A lines [0, SPLIT) here, the rest on the helper
 
+/* The capture DISPCAPCNT `cnt` asks for, from this frame (g_copy), into
+   g_cap. Source A only: engine A's picture (bit 24 clear) or the 3D alone;
+   source B (VRAM or the main-memory FIFO) and the A+B blends are not done
+   (logged once). `a_composed` is engine A as just composed -- it has the 3D
+   in it only on the CPU path. */
+void make_capture(uint32_t cnt, const ntr::Framebuffer &a_composed)
+{
+    static const int kW[4] = {128, 256, 256, 256}, kH[4] = {128, 64, 128, 192};
+    const unsigned size = (cnt >> 20) & 3, source = (cnt >> 29) & 3;
+    static bool told;
+    if (source != 0 && !told) {
+        told = true;
+        printf("  display capture: source %u (VRAM or main memory) not done, captured from A only\n", source);
+    }
+    static ntr::Framebuffer cap3d, capA;
+    if (g_copy.has3d) ntr::gx_render_frame(g_copy.frame3d, cap3d);
+    else memset(&cap3d, 0, sizeof cap3d);
+    const ntr::Framebuffer *src;
+    if (cnt & (1u << 24)) {
+        src = &cap3d;                                   // the 3D picture alone
+    } else if (!g_gl) {
+        src = &a_composed;                              // engine A, 3D in it already
+    } else {
+        // on the GPU the 3D is mixed in later: engine A again, with the CPU's
+        // 3D picture (its line buffers, part 0, are free once composed)
+        ntr::ppu_compose_lines(ntr::ENGINE_A, capA, g_copy.has3d ? &cap3d : nullptr, 0, ntr::SCREEN_H, 0);
+        src = &capA;
+    }
+    g_cap.cnt = cnt;
+    g_cap.w = kW[size];
+    g_cap.h = kH[size];
+    const bool alpha_from_3d = cnt & (1u << 24);
+    for (int y = 0; y < g_cap.h; ++y)
+        for (int x = 0; x < g_cap.w; ++x) {
+            const uint32_t c = src->px[y][x];
+            const uint16_t r = (c >> 19) & 31, gg = (c >> 11) & 31, b = (c >> 3) & 31;
+            const bool on = alpha_from_3d ? (c >> 24) != 0 : true;
+            g_cap.px[y * g_cap.w + x] = static_cast<uint16_t>(r | gg << 5 | b << 10 | (on ? 0x8000 : 0));
+        }
+    g_cap.ready = true;
+}
+
 int help_thread(SceSize, void *)
 {
     for (;;) {
@@ -490,6 +549,11 @@ int draw_thread(SceSize, void *)
             }
         }
         if (!g_gl) ntr::ppu_apply_master_brightness(mb_a, a);    // the GPU's, else
+        {
+            uint32_t cap;
+            memcpy(&cap, regions[4] + 0x64, 4);
+            if ((cap & 0x80000000u) && !g_cap.ready) make_capture(cap, a);
+        }
         const double t_2d = seconds();
         // POWCNT1 bit 15: engine A on the top screen (the usual case)
         const bool a_top = powcnt & 0x8000;
@@ -645,6 +709,33 @@ extern "C" void sm64ds_display_present(void)
     if (sceKernelPollSema(g_done, 1) < 0) {
         ++g_dropped;
         return;
+    }
+    if (g_cap.ready) {          // last frame's capture into its bank, then the bit cleared
+        const unsigned bank = (g_cap.cnt >> 16) & 3;
+        // Only into a bank in LCDC or engine A BG use: the capture writes the
+        // bank's memory, and one mapped for textures holds the 3D's textures
+        // (a capture aimed at bank A while it held the castle's textures
+        // wrote black over them: the castle's dotted, blocky walls in 0108).
+        const uint8_t vcnt = NTR_MMIO(uint8_t, 0x04000240 + bank);
+        const unsigned mst = vcnt & 7;
+        const bool writable = (vcnt & 0x80) && (mst == 0 || mst == 1);
+        static int told;
+        if (told < 8) {
+            ++told;
+            printf("  display capture: %08x into bank %c (VRAMCNT %02x)%s\n", (unsigned)g_cap.cnt, 'A' + bank,
+                   vcnt, writable ? "" : ", not written: the bank holds textures or sprites");
+        }
+        uint32_t bank_size = 0;
+        if (!writable) {
+        } else if (const uint32_t base = ntr::vram_bank_live(static_cast<int>(bank), &bank_size)) {
+            uint8_t *dst = ::ntr::host_ptr_t<uint8_t>(base);
+            uint32_t off = ((g_cap.cnt >> 18) & 3) * 0x8000u;
+            for (int y = 0; y < g_cap.h; ++y)
+                for (int x = 0; x < g_cap.w; ++x, off = (off + 2) % bank_size)
+                    memcpy(dst + off, &g_cap.px[y * g_cap.w + x], 2);
+        }
+        NTR_MMIO(uint32_t, 0x04000064) &= ~0x80000000u;
+        g_cap.ready = false;
     }
     g_copy.has3d = NTR_MMIO(uint32_t, 0x04000000) & 0x8;     // DISPCNT A: BG0 is 3D
     // the 3D frame is captured here (its triangles and the textures they

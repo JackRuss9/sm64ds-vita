@@ -81,6 +81,7 @@ uint32_t vram_tex_addr(uint32_t off, uint32_t *avail);
 uint32_t vram_pltt_addr(uint32_t off, uint32_t *avail);
 void vram_restore_state();          // mapping from VRAMCNT as it stands, no copies
 uint32_t vram_ext_pltt(int eng, bool obj, unsigned slot);
+uint32_t vram_bank_live(int b, uint32_t *size);   // bank b (A=0..I=8): where its bytes are now
 bool vram_3d_banks(bool palettes);   // any bank mapped as texture (A-D) / texture palette (E-G)   // extended palette slot (8 KB), 0 if none
 
 uint64_t io_read(uint32_t addr, unsigned width);

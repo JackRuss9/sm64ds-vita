@@ -17,7 +17,8 @@
 #include "ntr/mmio.h"
 #include "ntr/ppu.h"
 
-namespace ntr { extern bool g_gx_debug_nodepth; }
+namespace ntr { extern bool g_gx_debug_nodepth;
+extern bool g_gx_debug_white; }
 // The ntr library logs through port/vita/vita_log.h; here stdout is fine.
 extern "C" { FILE *sm64ds_log_file = nullptr; }
 
@@ -164,6 +165,7 @@ int main(int argc, char **argv)
     const ntr::GxTriangle *t = ntr::gx_polygons(ntri);
     std::printf("3D replay: %u commands, %u swaps, %u projection loads, %zu triangles shown\n", st[0],
                 st[2], st[5], ntri);
+    if (std::getenv("SNAP_WHITE")) ntr::g_gx_debug_white = true;   // textures without lighting
     const int verbose = std::getenv("SNAP_TRIS") ? std::atoi(std::getenv("SNAP_TRIS")) : 8;
     for (size_t i = 0; i < ntri && (int)i < verbose; ++i) {
         std::printf("  tri %zu: tex %p %dx%d attr %08x wrap %x\n", i, (const void *)t[i].tex, t[i].tw, t[i].th, t[i].attr, t[i].wrap);
@@ -171,6 +173,42 @@ int main(int argc, char **argv)
             std::printf("     v%d x %.1f y %.1f z %.3f w %.3f uv %.1f,%.1f color %08x\n", k,
                         t[i].v[k].x, t[i].v[k].y, t[i].v[k].z, t[i].v[k].w, t[i].v[k].u,
                         t[i].v[k].v, t[i].v[k].color);
+    }
+
+    // SNAP_TEXDUMP=prefix: every texture the last frame uses, decoded, as
+    // prefix_<n>_<w>x<h>.ppm (RGB) and a line per texture: how many
+    // triangles use it, how many of its texels are transparent or black
+    if (const char *td = std::getenv("SNAP_TEXDUMP")) {
+        std::vector<const uint32_t *> seen;
+        for (size_t i = 0; i < ntri; ++i) {
+            if (!t[i].tex) continue;
+            size_t k = 0;
+            while (k < seen.size() && seen[k] != t[i].tex) ++k;
+            if (k < seen.size()) continue;
+            seen.push_back(t[i].tex);
+            const int w = t[i].tw, h = t[i].th;
+            unsigned uses = 0, clear = 0, black = 0;
+            for (size_t j = 0; j < ntri; ++j) uses += t[j].tex == t[i].tex;
+            char fn[512];
+            std::snprintf(fn, sizeof fn, "%s_%zu_%dx%d.ppm", td, k, w, h);
+            if (FILE *f = std::fopen(fn, "wb")) {
+                std::fprintf(f, "P6\n%d %d\n255\n", w, h);
+                for (int p = 0; p < w * h; ++p) {
+                    const uint32_t c = t[i].tex[p];
+                    const unsigned char rgb[3] = {(unsigned char)(c), (unsigned char)(c >> 8), (unsigned char)(c >> 16)};
+                    clear += (c >> 24) == 0;
+                    black += (c & 0xffffff) == 0 && (c >> 24);
+                    std::fwrite(rgb, 1, 3, f);
+                }
+                std::fclose(f);
+            }
+            uint32_t ti = 0, pb = 0;
+            const bool src = ntr::gx_debug_tex_source(t[i].tex, &ti, &pb);
+            std::printf("  texture %zu: %p %dx%d, %u triangles (first %zu, attr %08x), %u%% clear, %u%% black;"
+                        " teximage %08x (format %u, at %05x) palette base %04x%s\n", k,
+                        (const void *)t[i].tex, w, h, uses, i, t[i].attr, 100 * clear / (w * h),
+                        100 * black / (w * h), ti, (ti >> 26) & 7, (ti & 0xffff) << 3, pb, src ? "" : " (?)");
+        }
     }
 
     // SNAP_PIXEL=x,y: every triangle whose box holds that pixel, in order

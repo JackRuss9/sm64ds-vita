@@ -57,6 +57,7 @@ constexpr int W = ntr::SCREEN_W, H = ntr::SCREEN_H;   // 256 x 192
 GLuint g_prog3d, g_prog2d, g_progmix;
 GLint g_u_tex3d, g_u_p, g_u_tex2d, g_u_mix_off, g_u_mix_ctl, g_u_mix_3d, g_u_mix_b, g_u_mix_m;
 GLuint g_rt_tex, g_rt_fbo, g_rt_depth;
+bool g_rt_stencil;      // the render target has a stencil buffer
 int g_rt_scale;                    // the 3D render target: 256 x 192 times this
 bool g_rt_wide;                    // ... and 4/3 as wide (widescreen)
 int g_rt_w, g_rt_h;
@@ -268,6 +269,7 @@ void drop_stale(const ntr::GxFrame &frame)
 struct Batch {
     const ntr::GxTriangle *first;   // texture and wrap come from it
     bool textured, depth_write;
+    int trans_id;                   // translucent polygon: its ID (0..63); -1 opaque
     std::vector<float> pos, uv;
     std::vector<uint8_t> col;
 };
@@ -300,10 +302,20 @@ void make_render_target(int scale, bool wide, int nw = 0, int nh = 0)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_rt_tex, 0);
     glGenRenderbuffers(1, &g_rt_depth);
     glBindRenderbuffer(GL_RENDERBUFFER, g_rt_depth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, g_rt_w, g_rt_h);
+    // depth and stencil: the stencil holds the polygon ID of the translucent
+    // pixel drawn (the DS's attribute buffer, see sm64ds_gl_render_3d)
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, g_rt_w, g_rt_h);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_rt_depth);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, g_rt_depth);
+    g_rt_stencil = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    if (!g_rt_stencil) {        // no depth+stencil target here: depth only, no ID rule
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, g_rt_w, g_rt_h);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_rt_depth);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    printf("  gpu: the 3D picture is drawn at %dx%d (%dx%s)\n", g_rt_w, g_rt_h, scale, wide ? ", widescreen" : "");
+    printf("  gpu: the 3D picture is drawn at %dx%d (%dx%s)%s\n", g_rt_w, g_rt_h, scale, wide ? ", widescreen" : "",
+           g_rt_stencil ? "" : ", no stencil (translucent polygon IDs not kept)");
 }
 
 void flush(Batch &b, float alpha_ref)
@@ -319,6 +331,17 @@ void flush(Batch &b, float alpha_ref)
     }
     glUniform4f(g_u_p, alpha_ref, b.textured ? 1.0f : 0.0f, 0.0f, 0.0f);
     glDepthMask(b.depth_write ? GL_TRUE : GL_FALSE);
+    // A translucent pixel is not drawn over a translucent pixel of the same
+    // polygon ID (GBATEK, "3D Polygon Attributes"): a model fading in or out
+    // shows its nearest layer, not every layer blended. The stencil keeps
+    // the ID (+1, 0 being none).
+    if (g_rt_stencil && b.trans_id >= 0) {
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_NOTEQUAL, b.trans_id + 1, 0xff);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    } else if (g_rt_stencil) {
+        glDisable(GL_STENCIL_TEST);
+    }
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, b.pos.data());
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, b.uv.data());
     glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, b.col.data());
@@ -406,7 +429,13 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
     glClearColor((c & 31) / 31.0f, ((c >> 5) & 31) / 31.0f, ((c >> 10) & 31) / 31.0f, ((c >> 16) & 31) / 31.0f);
     glClearDepthf(1.0f);
     glDepthMask(GL_TRUE);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (g_rt_stencil) {
+        glClearStencil(0);
+        glStencilMask(0xff);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    } else {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
 
     glUseProgram(g_prog3d);
     glUniform1i(g_u_tex3d, 0);
@@ -438,7 +467,8 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
         bool opaque = t.alpha >= 31;
         if (opaque && textured) opaque = !texture_for(t).partial;
         const bool depth_write = opaque || (t.attr & 0x800);
-        if (b.first && (textured != b.textured || depth_write != b.depth_write
+        const int trans_id = t.alpha < 31 ? (int)((t.attr >> 24) & 63) : -1;
+        if (b.first && (textured != b.textured || depth_write != b.depth_write || trans_id != b.trans_id
                         || (textured && (t.tex != b.first->tex || t.wrap != b.first->wrap)))) {
             flush(b, alpha_ref);
             b.first = nullptr;
@@ -447,6 +477,7 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
             b.first = &t;
             b.textured = textured;
             b.depth_write = depth_write;
+            b.trans_id = trans_id;
         }
         const float pa = (float)t.alpha;
         for (const ntr::GxVertex *v : {&v0, &v1, &v2}) {
@@ -465,6 +496,7 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
     }
     if (b.first) flush(b, alpha_ref);
     glDepthMask(GL_TRUE);
+    if (g_rt_stencil) glDisable(GL_STENCIL_TEST);
 
     if (!fb) {                  // mixed in on the GPU (sm64ds_gl_present)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

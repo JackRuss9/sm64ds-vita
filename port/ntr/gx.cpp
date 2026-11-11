@@ -680,9 +680,40 @@ void bind_from_vram() {
         // The bank VRAMCNT gives that texture slot (port/ntr/vram.cpp); the
         // flat slot window when none is mapped (the smoke harnesses).
         uint32_t avail = 0;
+        // bytes the texels take: bits per texel by format (1 A3I5, 2 4-colour,
+        // 3 16-colour, 4 256-colour, 5 4x4 blocks, 6 A5I3, 7 direct)
+        static const uint8_t kBits[8] = {0, 8, 2, 4, 8, 2, 8, 16};
+        const uint32_t need = static_cast<uint32_t>(d.width) * d.height * kBits[fmt] / 8;
+        // The texture slots are one 512 KB space on the DS: a texture that
+        // starts near the end of a 128 KB slot goes on into the next slot's
+        // bank. Each bank is its own storage here, so such a texture is put
+        // together from both (decoded from the copy, synchronously). Read only
+        // up to the slot's end, its last rows were black -- parts of Bowser
+        // (his mouth, his feet) whose texels are at the end of his texture.
+        static thread_local std::vector<uint8_t> joined, joined_index;
+        auto gather = [](uint32_t from, uint32_t len, uint32_t first, uint32_t first_avail,
+                         std::vector<uint8_t> &buf) -> bool {
+            if (first_avail >= len) return false;
+            buf.assign(len, 0);
+            memcpy(buf.data(), host_ptr_t<const uint8_t>(first), first_avail);
+            uint32_t done = first_avail;
+            while (done < len) {
+                uint32_t av = 0;
+                const uint32_t a = vram_tex_addr(from + done, &av);
+                if (!a || !av) break;            // the next slot has no bank: zeros, as on the DS
+                const uint32_t n = std::min(av, len - done);
+                memcpy(buf.data() + done, host_ptr_t<const uint8_t>(a), n);
+                done += n;
+            }
+            return true;
+        };
         if (const uint32_t a = vram_tex_addr(off, &avail)) {
             d.data = host_ptr_t<const uint8_t>(a);
             d.data_len = static_cast<int32_t>(avail);
+            if (gather(off, need, a, avail, joined)) {
+                d.data = joined.data();
+                d.data_len = static_cast<int32_t>(joined.size());
+            }
         } else if (vram_3d_banks(false)) {
             // a slot no bank holds: the DS reads nothing there -- no texture
             d.data = nullptr;
@@ -698,6 +729,10 @@ void bind_from_vram() {
             if ((ia = vram_tex_addr(0x20000 + off / 2, &iav))) {
                 d.index = host_ptr_t<const uint8_t>(ia);
                 d.index_len = static_cast<int32_t>(iav);
+                if (gather(0x20000 + off / 2, need / 2, ia, iav, joined_index)) {   // a 16-bit word per 4x4 block
+                    d.index = joined_index.data();
+                    d.index_len = static_cast<int32_t>(joined_index.size());
+                }
             } else if (vram_3d_banks(false)) {
                 d.index = nullptr;
                 d.index_len = 0;
@@ -711,6 +746,33 @@ void bind_from_vram() {
         if (const uint32_t pa = vram_pltt_addr(pal_off, &pav)) {
             d.pal = host_ptr_t<const uint8_t>(pa);
             d.pal_len = static_cast<int32_t>(pav);
+            // The palette slots are one space too (E's four 16 KB slots, then
+            // F's and G's). A 4x4-block texture's blocks each add their own
+            // palette offset (up to 64 KB) to the base, so a texture whose
+            // palette base sits near the end of E reads on into the next
+            // slot's bank. Read only to E's end, those blocks' colours were 0:
+            // the black patches on Bowser (snout, shell rim, claws), whose
+            // palette starts 3.5 KB before E's end.
+            static const uint32_t kPalNeed[8] = {0, 64, 8, 32, 512, 0x10000, 16, 0};
+            const uint32_t pneed = kPalNeed[fmt];
+            static thread_local std::vector<uint8_t> joined_pal;
+            if (pav < pneed) {
+                joined_pal.assign(pneed, 0);
+                memcpy(joined_pal.data(), host_ptr_t<const uint8_t>(pa), pav);
+                uint32_t done = pav;
+                while (done < pneed) {
+                    uint32_t av = 0;
+                    const uint32_t a2 = vram_pltt_addr(pal_off + done, &av);
+                    if (!a2 || !av) break;           // nothing mapped there: colour 0, as on the DS
+                    const uint32_t n = std::min(av, pneed - done);
+                    memcpy(joined_pal.data() + done, host_ptr_t<const uint8_t>(a2), n);
+                    done += n;
+                }
+                if (done > pav) {
+                    d.pal = joined_pal.data();
+                    d.pal_len = static_cast<int32_t>(done);
+                }
+            }
         } else if (vram_3d_banks(true)) {
             // a palette slot no bank holds: every colour reads as 0
             d.pal = nullptr;
@@ -827,6 +889,7 @@ const GxTriangle *gx_polygons(size_t &count) {
 }
 
 bool g_gx_debug_nodepth;     // tools: draw in submission order, no depth test
+bool g_gx_debug_white;       // tools: vertex colours as white (textures without lighting)
 
 namespace {
 // `layer`: the picture as the 2D engine receives it (gx_render_layer) --
@@ -840,8 +903,15 @@ void render_impl(Framebuffer &fb, bool layer, const std::vector<GxTriangle> &tri
                  unsigned alpha_ref_reg, uint32_t clear) {
     std::lock_guard<std::mutex> hold(g_render_lock);
     static float depth[SCREEN_H][SCREEN_W];
+    // The DS's attribute buffer: the polygon ID of the translucent pixel
+    // drawn there (0xff none). A translucent pixel is not drawn over one of
+    // the same ID (GBATEK, "3D Polygon Attributes"), so a model fading in or
+    // out draws its nearest layer once instead of every layer blended --
+    // Peach in the intro is translucent while she fades, and without the
+    // rule her crown (behind her face) showed through it.
+    static uint8_t trans_id[SCREEN_H][SCREEN_W];
     for (int y = 0; y < SCREEN_H; ++y)
-        for (int x = 0; x < SCREEN_W; ++x) depth[y][x] = 1e30f;
+        for (int x = 0; x < SCREEN_W; ++x) depth[y][x] = 1e30f, trans_id[y][x] = 0xff;
     const unsigned alpha_ref = (disp3d & 4) ? alpha_ref_reg & 31 : 0;
     if (layer) {
         const uint32_t r = clear & 31, gg = (clear >> 5) & 31, b = (clear >> 10) & 31;
@@ -934,7 +1004,8 @@ void render_impl(Framebuffer &fb, bool layer, const std::vector<GxTriangle> &tri
                 // Round, do not truncate: barycentrics sum to 0.9999 rather than
                 // exactly 1, and a truncating cast bands a flat surface 255/254.
                 auto ch = [&](int sh) {
-                    const float v = l0 * ((a.color >> sh) & 0xFF)
+                    const float v = g_gx_debug_white ? 255.0f
+                                    : l0 * ((a.color >> sh) & 0xFF)
                                     + l1 * ((b.color >> sh) & 0xFF)
                                     + l2 * ((c.color >> sh) & 0xFF);
                     const float m = ((texel >> sh) & 0xFF) / 255.0f;
@@ -949,6 +1020,11 @@ void render_impl(Framebuffer &fb, bool layer, const std::vector<GxTriangle> &tri
                     if (a == 0 || ((disp3d & 4) && a <= alpha_ref)) continue;
                     const uint32_t dst = fb.px[y][x];
                     const unsigned da = dst >> 24;
+                    const uint8_t pid = static_cast<uint8_t>((t.attr >> 24) & 63);
+                    if (a < 31) {
+                        if (trans_id[y][x] == pid) continue;     // same ID: not drawn again
+                        trans_id[y][x] = pid;
+                    }
                     if (a >= 31) {
                         depth[y][x] = z;
                         fb.px[y][x] = 31u << 24 | src;
@@ -1010,6 +1086,18 @@ void gx_capture_frame(GxFrame &out) {
 
 void gx_render_frame(const GxFrame &frame, Framebuffer &fb) {
     render_impl(fb, true, frame.tris, frame.disp3d, frame.alpha_ref, frame.clear);
+}
+
+/* For the snapshot tool: the TEXIMAGE_PARAM and palette base a decoded
+   texture came from (false when it is not in the VRAM texture cache). */
+bool gx_debug_tex_source(const uint32_t *tex, uint32_t *teximage, uint32_t *plttbase) {
+    for (const auto &e : g_vram_tex_cache)
+        if (e.second && e.second->data() == tex) {
+            *teximage = static_cast<uint32_t>(e.first);
+            *plttbase = static_cast<uint32_t>(e.first >> 32);
+            return true;
+        }
+    return false;
 }
 
 void gx_debug_stats(uint32_t out[6]) {

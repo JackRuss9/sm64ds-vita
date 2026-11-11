@@ -3538,7 +3538,15 @@ Texture pattern by idx: 1 uses data_ov060_0211ac40, 2 acb8 and 0xa ac30 (all
 with texture-sequence flags 0x40000000); 3 and 5 use ac10, 0xe uses abf0, and
 every other idx (0 included) uses ac28 (these three with flags 0). */
 void daKpa_c::func_ov060_02111cc0(int idx, int animFlags){
+#if defined(SM64DS_PLATFORM_PC)
+    /* Natively compiled, `a' is not r2 but garbage: the defeat's get-up try
+       (animation 5, play-once) then looped at random, never finished, so the
+       lying animation (3) never started, the defeat waited for it forever and
+       Bowser kept trying to get up -- the first fight could not be won. */
+    int a = animFlags;
+#else
     int a;  /* deliberately never assigned: it is animFlags, still in r2 (see above) */
+#endif
     this->mAnmModel.SetAnim((BCA_File *)(data_ov060_021192dc[idx]->filePtr), a, 0x1000, 0);
     switch (idx) {
     case 1:
