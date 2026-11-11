@@ -534,6 +534,20 @@ extern "C" void sm64ds_gl_present(const GlScreens &s)
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glDisableVertexAttribArray(2);
+    // The larger screen first, the smaller one over it: in Widescreen 16:9
+    // one screen fills the display and the other is an inset in its corner.
+    // While the game shows engine A on the touch screen (POWCNT bit 15 clear,
+    // as at the title and file select), engine B is the full-screen one, and
+    // drawn after A it covered the inset: the touch screen was missing.
+    const bool b_first = rect_b[2] * rect_b[3] > rect_a[2] * rect_a[3];
+    auto draw_b = [&] {
+        glUseProgram(g_prog2d);
+        glUniform1i(g_u_tex2d, 0);
+        glActiveTexture(GL_TEXTURE0);
+        if (rect_b[2] > 0)
+            quad(g_screen_tex[1], (float)rect_b[0], (float)rect_b[1], (float)rect_b[2], (float)rect_b[3], 1, 1);
+    };
+    if (b_first) draw_b();
     if (rect_a[2] > 0 && s.a_ctl) {
         glUseProgram(g_progmix);
         glUniform1i(g_u_mix_off, 0);
@@ -553,8 +567,7 @@ extern "C" void sm64ds_gl_present(const GlScreens &s)
     glActiveTexture(GL_TEXTURE0);
     if (rect_a[2] > 0 && !s.a_ctl)
         quad(g_screen_tex[0], (float)rect_a[0], (float)rect_a[1], (float)rect_a[2], (float)rect_a[3], 1, 1);
-    if (rect_b[2] > 0)
-        quad(g_screen_tex[1], (float)rect_b[0], (float)rect_b[1], (float)rect_b[2], (float)rect_b[3], 1, 1);
+    if (!b_first) draw_b();
     // the line over the picture: its unused part is transparent
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

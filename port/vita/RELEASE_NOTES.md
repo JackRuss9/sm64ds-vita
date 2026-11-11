@@ -20,13 +20,14 @@ The second build of the native PS Vita port of Super Mario 64 DS.
   Yoshi's running smoke drawn as plain squares; a crash entering the castle a second time;
   the slowdown near Piranha Plants; black doors with Yoshi's eyes on them.
 - VS mode returns to the title screen instead of crashing.
+- Fixed: the moon jump cheat did nothing.
 
 ## What's in it
 - **Native port**: the game's code runs directly on the Vita, not in an emulator.
 - **GPU 3D** at the Vita's screen size or 1×–4× the DS resolution (vitaGL).
 - **Screen layouts**: side by side, big top screen, big touch screen, top screen only, and true **Widescreen 16:9**.
 - **Sound**: a full DS sound driver (sequences, instruments, ADPCM, PSG/noise).
-- **Settings menu** (D-pad Right + Square) and **Cheats menu** (D-pad Left + Circle): infinite lives, moon jump, infinite power, infinite breath underwater, 99 coins.
+- **Settings menu** (D-pad Right + Square) and **Cheats menu** (D-pad Left + Circle): infinite lives, moon jump, infinite power, infinite breath underwater, 99 coins, **god mode** (new).
 - Right stick turns the camera. The touch screen works on the front panel.
 - A **glitch recorder** for bug reports: a rear tap saves the last 1–2 seconds of 3D.
 

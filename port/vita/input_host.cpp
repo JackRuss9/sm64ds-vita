@@ -35,7 +35,7 @@
 
 extern "C" {
 extern volatile int sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
-    sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins;   /* vita_display.cpp */
+    sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins, sm64ds_cheat_god_mode;   /* vita_display.cpp */
 extern signed char data_0209f2f4;      /* the lives counter */
 extern void *data_0209f394[];          /* the players, by slot */
 extern unsigned char gActivePlayerSlot;
@@ -73,8 +73,16 @@ void put16(uint32_t ds, uint16_t v) { *static_cast<volatile uint16_t *>(::ntr::h
      99 coins        the coin count kept at 99 at least: the next coin is
                      the hundredth, and brings the level's 100-coin star;
      moon jump       holding jump (A: Circle) sends the player up, steadily:
-                     its vertical speed (dActor_c +0xa8, 1/4096 units a
-                     frame) at least 0x14000. */
+                     its vertical speed at least 0x14000 (1/4096 units a
+                     frame) -- both copies: mVertSpeed (dActor_c +0xa8) and
+                     Player's mPrevVertSpeed (+0x640), which the air states
+                     work from and copy back over mVertSpeed (setting only
+                     the first did nothing);
+     god mode        no damage: the invincibility a hit gives (mInvincibleTimer,
+                     +0x6a0, counted down each frame) kept at 3 -- odd before
+                     the frame, so even (drawn, not blinking) when the player
+                     is drawn -- and the power meter full. A fall out of the
+                     level still costs a life. */
 void apply_cheats(uint32_t vita_buttons)
 {
     if (sm64ds_cheat_infinite_lives && data_0209f2f4 < 4) data_0209f2f4 = 4;
@@ -98,10 +106,17 @@ void apply_cheats(uint32_t vita_buttons)
     // coins: data_0209f358[player]; the next coin makes 100 and brings the
     // level's 100-coin star
     if (sm64ds_cheat_99_coins && player && no < 4 && data_0209f358[no] < 99) data_0209f358[no] = 99;
+    if (sm64ds_cheat_god_mode && player) {
+        uint16_t *inv = reinterpret_cast<uint16_t *>(player + 0x6a0);   /* mInvincibleTimer */
+        if (*inv < 3) *inv = 3;
+        if (no < 4 && data_02092144[no] < 0x800 && data_02092144[no] > 0) data_02092144[no] = 0x800;
+    }
     if (sm64ds_cheat_moon_jump && (vita_buttons & SCE_CTRL_CIRCLE)) {
         if (player) {
             int32_t *vert = reinterpret_cast<int32_t *>(player + 0xa8);
+            int32_t *prev = reinterpret_cast<int32_t *>(player + 0x640);   /* mPrevVertSpeed */
             if (*vert < 0x14000) *vert = 0x14000;
+            if (*prev < 0x14000) *prev = 0x14000;
         }
     }
 }

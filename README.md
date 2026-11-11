@@ -86,6 +86,7 @@ Layout and resolution only apply to the GPU renderer.
 | **Infinite power** | The power meter refills whenever it drops. Falling out of the level still costs a life. |
 | **Infinite breath underwater** | The power meter doesn't drain underwater |
 | **99 coins** | The coin counter starts at 99: the next coin is the 100th and brings the course's 100-coin star |
+| **God mode** | Enemies, fire and hazards can't hurt you, and the power meter stays full. Falling out of the level still costs a life. |
 
 ## Save states
 

@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "ntr/mmio.h"
+#include "ntr/rt.h"
 
 extern "C" {
 extern int data_0209d50c;               /* the main loop's step: 7 while playing; the ranges' anchor */
@@ -245,6 +246,50 @@ extern void *data_0209f318;             /* the camera (dCamera_c) */
 extern void *data_0209f394[];           /* the players, by slot */
 extern unsigned char gActivePlayerSlot;
 bool sm64ds_in_game_arena(const void *p);   /* arena_host.cpp */
+extern int data_02086fcc;               /* the camera's mode table, 0x28 a mode */
+/* The camera's mode, area mode and state, logged as they change while
+   playing (the first 300 changes), with how far it sits from what it looks
+   at: for "the camera got stuck in the tower wall" reports. */
+static void camera_modes(const char *c)
+{
+    static int left = 300, frame;
+    static const void *last[3];
+    ++frame;
+    if (left <= 0) return;
+    const void *now[3] = {*(void *const *)(c + 0x13c), *(void *const *)(c + 0x140), *(void *const *)(c + 0x138)};
+    if (!memcmp(now, last, sizeof now)) return;
+    memcpy(last, now, sizeof now);
+    --left;
+    const int32_t *pos = (const int32_t *)(c + 0x8c), *look = (const int32_t *)(c + 0x80);
+    double d = 0;
+    for (int k = 0; k < 3; ++k) d += ((double)pos[k] - look[k]) * ((double)pos[k] - look[k]);
+    const auto mode = [](const void *m) {
+        return m ? (int)(((const char *)m - (const char *)&data_02086fcc) / 0x28) : -1;
+    };
+    printf("  [camera %d] mode %d, area mode %d, state %p; %d units from what it looks at; pos %d %d %d look %d %d %d\n",
+           frame, mode(now[0]), mode(now[1]), now[2], (int)(__builtin_sqrt(d) / 4096), pos[0] >> 12, pos[1] >> 12,
+           pos[2] >> 12, look[0] >> 12, look[1] >> 12, look[2] >> 12);
+}
+/* The camera under what it looks at by more than 600 units (it "falls"
+   at a spot on Whomp's tower): logged every 4th frame, 250 lines at most,
+   with what it aims for and the wall it last hit. */
+static void camera_low(const char *c)
+{
+    static int left = 250, frame;
+    ++frame;
+    if (left <= 0 || (frame & 3)) return;
+    const int32_t *v = (const int32_t *)c;   // in words: 0x80 lookAt, 0x8c pos, 0x98 target, 0xe0 wall, 0xec normal
+    if ((v[0x8c / 4 + 1] >> 12) >= (v[0x80 / 4 + 1] >> 12) - 600) return;
+    --left;
+    const auto u = [&](int off, int k) { return v[off / 4 + k] >> 12; };
+    printf("  [camera low %d] pos %d %d %d look %d %d %d target %d %d %d wall %d %d %d normal %d %d %d"
+           " flags %08x angles x %d y %d base %d pitch %d yaw %d timer %u view %p\n",
+           frame, u(0x8c, 0), u(0x8c, 1), u(0x8c, 2), u(0x80, 0), u(0x80, 1), u(0x80, 2), u(0x98, 0), u(0x98, 1),
+           u(0x98, 2), u(0xe0, 0), u(0xe0, 1), u(0xe0, 2), v[0xec / 4], v[0xec / 4 + 1], v[0xec / 4 + 2],
+           *(const uint32_t *)(c + 0x154), *(const int16_t *)(c + 0x17e), *(const int16_t *)(c + 0x17c),
+           *(const int16_t *)(c + 0x182), *(const int16_t *)(c + 0x1a2), *(const int16_t *)(c + 0x1a4),
+           *(const uint16_t *)(c + 0x196), *(void *const *)(c + 0x144));
+}
 static void camera_watch(void)
 {
     static int left = 300, frame;
@@ -255,6 +300,10 @@ static void camera_watch(void)
     if (data_0209d50c != 7) {
         for (bool &h : have) h = false;
         return;
+    }
+    if (data_0209f318 && sm64ds_in_game_arena(data_0209f318)) {
+        camera_modes((const char *)data_0209f318);
+        camera_low((const char *)data_0209f318);
     }
     char *obj[5] = {(char *)data_0209f318};
     for (int i = 0; i < 4; ++i) obj[i + 1] = (char *)data_0209f394[i];
@@ -336,6 +385,118 @@ void sm64ds_rootmotion_log(int kind, int mode, const int *bone, const int *targe
     }
     printf("\n");
 }
+
+/* d_camera.cpp's follow camera (func_02009e70, under the PC guard), for
+   the camera that drops under Whomp's tower stairs. Each frame it probes
+   three times -- a line up from the camera (0), a line up from halfway to
+   what it looks at (1), the ground under the first line's end (2) -- and
+   clamps the height it wants between a floor and the ceilings found. The
+   probes and the mode record are kept here; sm64ds_camera_height_log prints
+   them all on a frame where a limit changes the height, the ground is 300
+   units or more under the target, or the camera drops 40 units or more while
+   the target does not: 600 lines at most. Each mode record in use is dumped
+   once, raw. */
+namespace {
+struct CamProbe {
+    int hit;
+    int32_t from[3], to[3];
+    int32_t clsn[3];            // the line's hit point, or the ground's height in [1]
+    uint32_t clps[2];
+    int32_t normal[3];
+    unsigned tri, collider;
+    unsigned owner_id;
+    const void *owner;
+};
+CamProbe g_probe[3];
+const void *g_cam_mode;
+int g_cam_mode_vals[6];
+}
+
+void sm64ds_camera_probe(int kind, const void *query, int hit, const void *from, const void *to)
+{
+    if (kind < 0 || kind > 2) return;
+    CamProbe &p = g_probe[kind];
+    const unsigned char *q = (const unsigned char *)query;
+    p.hit = hit;
+    memcpy(p.from, from, 12);
+    memcpy(p.to, to, 12);
+    memset(p.clsn, 0, sizeof p.clsn);
+    if (kind == 2) p.clsn[1] = *(const int32_t *)(q + 0x44);            // dBgCh_Gnd::clsnY
+    else memcpy(p.clsn, q + 0x54, 12);                                   // dBgCh_Lin's hit point
+    // the hit record, dBgPi at +0x10: surface (clps, normal) at +0x14,
+    // triangle +0x28, collider slot +0x2a, owner +0x30
+    memcpy(p.clps, q + 0x14, 8);
+    memcpy(p.normal, q + 0x1c, 12);
+    p.tri = *(const uint16_t *)(q + 0x28);
+    p.collider = *(const uint16_t *)(q + 0x2a);
+    p.owner = *(const void *const *)(q + 0x30);
+    p.owner_id = p.owner && sm64ds_in_game_arena(p.owner) ? *(const uint16_t *)((const char *)p.owner + 0xc) : 0xffff;
+}
+
+void sm64ds_camera_mode_log(const void *mode, int dist, int min_slope, int max_slope, int r6, int sp04, int flags)
+{
+    g_cam_mode = mode;
+    const int v[6] = {dist, min_slope, max_slope, r6, sp04, flags};
+    memcpy(g_cam_mode_vals, v, sizeof v);
+    static const void *dumped[64];
+    static int ndumped;
+    for (int i = 0; i < ndumped; ++i)
+        if (dumped[i] == mode) return;
+    if (ndumped >= 64 || !mode) return;
+    dumped[ndumped++] = mode;
+    const int32_t *w = (const int32_t *)mode;
+    printf("  [camera mode record %d]", (int)(((const char *)mode - (const char *)&data_02086fcc) / 0x28));
+    for (int i = 0; i < 10; ++i) printf(" %08x", (unsigned)w[i]);
+    printf("\n");
+}
+
+void sm64ds_camera_height_log(const void *cam, int ground, int wanted, int floor_, int ceiling, int probe_y)
+{
+    static int left = 600;
+    static int32_t last_pos_y, last_target_y;
+    const int32_t *v = (const int32_t *)cam;
+    const int32_t pos_y = v[0x8c / 4 + 1], target_y = v[0x98 / 4 + 1];
+    const bool dropped = pos_y < last_pos_y - (40 << 12) && target_y >= last_target_y - (8 << 12);
+    last_pos_y = pos_y;
+    last_target_y = target_y;
+    if (left <= 0) return;
+    const bool clamped = wanted > ceiling || wanted < floor_;
+    if (!clamped && !dropped && ground > target_y - (300 << 12)) return;
+    --left;
+    const int *m = g_cam_mode_vals;
+    printf("  [camera height %u] wants %d, ground %d (probe from %d), floor %d, ceiling %d%s%s; pos %d %d %d"
+           " look %d %d %d target %d %d %d; mode %d dist %d slopes %d..%d (min rise %d) sp04 %d flags %x\n",
+           (unsigned)ntr::rt_frame(), wanted >> 12, ground >> 12, probe_y >> 12, floor_ >> 12, ceiling >> 12,
+           wanted > ceiling ? " CEILING" : wanted < floor_ ? " FLOOR" : "", dropped ? " DROPPED" : "",
+           v[0x8c / 4] >> 12, pos_y >> 12, v[0x8c / 4 + 2] >> 12, v[0x80 / 4] >> 12, v[0x80 / 4 + 1] >> 12,
+           v[0x80 / 4 + 2] >> 12, v[0x98 / 4] >> 12, target_y >> 12, v[0x98 / 4 + 2] >> 12,
+           g_cam_mode ? (int)(((const char *)g_cam_mode - (const char *)&data_02086fcc) / 0x28) : -1, m[0] >> 12,
+           m[1], m[2], m[3] >> 12, m[4] >> 12, (unsigned)m[5]);
+    static const char *const kind[3] = {"up from camera", "up from midpoint", "ground"};
+    for (int i = 0; i < 3; ++i) {
+        const CamProbe &p = g_probe[i];
+        printf("    %s: %s %d %d %d -> %d %d %d", kind[i], p.hit ? "HIT" : "miss", p.from[0] >> 12, p.from[1] >> 12,
+               p.from[2] >> 12, p.to[0] >> 12, p.to[1] >> 12, p.to[2] >> 12);
+        if (p.hit)
+            printf(" at %d %d %d, triangle %u collider %u owner %p (actor %04x), clps %08x %08x normal %d %d %d",
+                   p.clsn[0] >> 12, p.clsn[1] >> 12, p.clsn[2] >> 12, p.tri, p.collider, p.owner, p.owner_id,
+                   p.clps[0], p.clps[1], p.normal[0], p.normal[1], p.normal[2]);
+        printf("\n");
+    }
+}
+
+extern void (*sm64ds_camera_probe_hook)(int, const void *, int, const void *, const void *);
+extern void (*sm64ds_camera_height_hook)(const void *, int, int, int, int, int);
+extern void (*sm64ds_camera_mode_hook)(const void *, int, int, int, int, int, int);
+/* d_camera.cpp's trace hooks, set before the game starts */
+static struct CameraHooks {
+    CameraHooks()
+    {
+        sm64ds_camera_probe_hook = sm64ds_camera_probe;
+        sm64ds_camera_height_hook = sm64ds_camera_height_log;
+        sm64ds_camera_mode_hook = sm64ds_camera_mode_log;
+    }
+} g_camera_hooks;
 
 /* The frame hook, on the game's thread. */
 void sm64ds_savestate_frame(void)

@@ -64,6 +64,14 @@ list(APPEND SM64DS_FLAGS -fno-devirtualize -fno-devirtualize-speculatively)
 # daObjYajirusi_c::OnAttacked1 has one, slot type int, no value on either
 # path); g++ only does with -fpermissive.
 list(APPEND SM64DS_FLAGS $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>)
+# Signed arithmetic wraps on the DS, and the game's fixed-point code counts
+# on it: products and sums that overflow 32 bits, angle and height
+# differences compared after a subtraction. To GCC a signed overflow is
+# undefined, and it rewrites such comparisons as if it could not happen.
+# -fwrapv gives back the DS's two's-complement arithmetic everywhere. (Tried
+# for the follow camera on Whomp's tower, which drops below the stairs where
+# the DS camera holds its height.)
+list(APPEND SM64DS_FLAGS -fwrapv)
 # More of what the ROM's code does that the ARM9 shrugs off and GCC treats as
 # "cannot happen", so optimizes into something else (the same class as the
 # null checks, devirtualization and missing returns above, found ahead of the
@@ -641,6 +649,7 @@ target_compile_definitions(gate10 PRIVATE SM64DS_PLATFORM_PC SM64DS_GATE_NAME="g
 target_compile_options(gate10 PRIVATE ${SM64DS_FLAGS})
 target_link_libraries(gate10 PRIVATE ntr_full)
 target_link_options(gate10 PRIVATE "-Wl,${G10_LD}" "-Wl,-T,${G10_INIT_LD}"
+    "-Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/sce_gap.ld"
     -Wl,--wrap=__register_global_object)
 set_property(TARGET gate10 APPEND PROPERTY LINK_DEPENDS "${G10_LD}")
 vita_create_self(gate10.self gate10)
@@ -699,6 +708,7 @@ add_custom_command(TARGET gate11 POST_BUILD
         "${CMAKE_BINARY_DIR}/gate11.map" "${CMAKE_BINARY_DIR}/state_ranges.bin"
     COMMENT "save-state ranges from the link map")
 target_link_options(gate11 PRIVATE "-Wl,${G10_LD}" "-Wl,-T,${G10_INIT_LD}"
+    "-Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/sce_gap.ld"   # room for vita-elf-create (see the file)
     -Wl,--wrap=FS_LoadOverlay -Wl,--wrap=func_02018c00
     -Wl,--wrap=func_02018b64 -Wl,--wrap=FS_StartOverlay
     # the ARM7 stand-in at the PXI FIFO (port/vita/arm7_host.cpp)

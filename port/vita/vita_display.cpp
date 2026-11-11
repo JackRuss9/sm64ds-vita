@@ -48,7 +48,7 @@ extern "C" {
    width (src/engine/collision/d_clipper.cpp, input_host.cpp). */
 volatile int sm64ds_wide_view;
 volatile int sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
-    sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins;
+    sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins, sm64ds_cheat_god_mode;
 }
 
 namespace {
@@ -240,6 +240,7 @@ const MenuItem kCheatItems[] = {
     {"INFINITE POWER", "cheat_power", &sm64ds_cheat_infinite_power, 0, 1, 0},
     {"INFINITE BREATH UNDERWATER", "cheat_breath", &sm64ds_cheat_infinite_breath, 0, 1, 0},
     {"99 COINS", "cheat_99_coins", &sm64ds_cheat_99_coins, 0, 1, 0},
+    {"GOD MODE (NO DAMAGE)", "cheat_god_mode", &sm64ds_cheat_god_mode, 0, 1, 0},
 };
 struct Menu {
     const char *title;
@@ -297,9 +298,9 @@ void settings_load()
     }
     fclose(f);
     printf("  settings: layout %d (%s), 3D %d, game speed %d%%, cheats: lives %d moon jump %d power %d breath %d"
-           " coins %d\n", g_layout, kLayouts[g_layout].name, g_scale, kSpeeds[g_speed_idx],
+           " coins %d god mode %d\n", g_layout, kLayouts[g_layout].name, g_scale, kSpeeds[g_speed_idx],
            sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
-           sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins);
+           sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins, sm64ds_cheat_god_mode);
 }
 
 // the open menu's picture: drawn again only when what it shows changes
@@ -737,12 +738,12 @@ extern "C" bool sm64ds_menu_pad(uint32_t buttons, uint32_t dpad_buttons)
         wait_release = true;
         settings_save();
         printf("  menu closed: layout %d, 3D %dx, frame rate %s, rear captures %s, speed %d%%, right stick camera %s;"
-               " infinite lives %s, moon jump %s, infinite power %s, infinite breath %s, 99 coins %s\n",
+               " infinite lives %s, moon jump %s, infinite power %s, infinite breath %s, 99 coins %s, god mode %s\n",
                g_layout, g_scale, g_show_fps ? "shown" : "hidden", g_rear_capture ? "on" : "off",
                kSpeeds[g_speed_idx], g_right_stick_camera ? "on" : "off",
                sm64ds_cheat_infinite_lives ? "on" : "off", sm64ds_cheat_moon_jump ? "on" : "off",
                sm64ds_cheat_infinite_power ? "on" : "off", sm64ds_cheat_infinite_breath ? "on" : "off",
-               sm64ds_cheat_99_coins ? "on" : "off");
+               sm64ds_cheat_99_coins ? "on" : "off", sm64ds_cheat_god_mode ? "on" : "off");
         return true;
     }
     if (pressed & SCE_CTRL_UP) mn.sel = (mn.sel + mn.count - 1) % mn.count;

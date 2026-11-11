@@ -2294,6 +2294,17 @@ static inline void MoveCameraPosition(dCamera_c *cam, const Vector3 &offset) {
     cam->pos.z = pos.z;
 }
 
+#if defined(SM64DS_PLATFORM_PC)
+/* The port's camera trace (func_02009e70): set by port/vita/savestate_host.cpp
+   in the Vita build, null elsewhere. Plain pointers, not weak functions: a
+   weak default in another file was not always the one the linker kept. */
+extern "C" {
+void (*sm64ds_camera_probe_hook)(int, const void *, int, const void *, const void *);
+void (*sm64ds_camera_height_hook)(const void *, int, int, int, int, int);
+void (*sm64ds_camera_mode_hook)(const void *, int, int, int, int, int, int);
+}
+#endif
+
 static inline s32 LimitCameraCeiling(dBgCh_Lin &line, Vector3 &endpoint, s32 ceiling) {
     Vector3 pos = line.GetClsnPos();
     endpoint.y = pos.y;
@@ -2626,10 +2637,24 @@ s32 func_02009e70(dCamera_c *cam) {
                                 cam->mFlags &= ~0x60;
                             }
                         }
+#if defined(SM64DS_PLATFORM_PC)
+                        /* each probe's query and answer, for the log (port/vita/savestate_host.cpp
+                           sets the hook; nothing is logged where none is set) */
+                        extern void (*sm64ds_camera_probe_hook)(int kind, const void *query, int hit,
+                                                                const void *from, const void *to);
+#define SM64DS_CAM_PROBE(kind, q, hit, from, to) \
+    (sm64ds_camera_probe_hook ? sm64ds_camera_probe_hook(kind, &(q), hit, &(from), &(to)) : (void)0)
+#else
+#define SM64DS_CAM_PROBE(kind, q, hit, from, to) ((void)0)
+#endif
                         SetVec(sp4c, cam->pos.x, cam->pos.y + 0x100000, cam->pos.z);
                         line.SetObjAndLine(cam->pos, sp4c, 0);
-                        if (line.DetectClsn() != 0) {
-                            ceil = LimitCameraCeiling(line, sp4c, ceil);
+                        {
+                            const int sm64ds_hit = line.DetectClsn();
+                            SM64DS_CAM_PROBE(0, line, sm64ds_hit, cam->pos, sp4c);
+                            if (sm64ds_hit != 0) {
+                                ceil = LimitCameraCeiling(line, sp4c, ceil);
+                            }
                         }
                         Vec3_Add(&sp7c, &cam->pos, &cam->lookAt);
                         Vec3_AsrInPlace(&sp7c, 1);
@@ -2637,8 +2662,12 @@ s32 func_02009e70(dCamera_c *cam) {
                         sp88.y = sp7c.y + 0x100000;
                         sp88.z = sp7c.z;
                         line.SetObjAndLine(sp7c, sp88, 0);
-                        if (line.DetectClsn() != 0) {
-                            ceil = LimitMidpointCeiling(line, sp88, ceil);
+                        {
+                            const int sm64ds_hit = line.DetectClsn();
+                            SM64DS_CAM_PROBE(1, line, sm64ds_hit, sp7c, sp88);
+                            if (sm64ds_hit != 0) {
+                                ceil = LimitMidpointCeiling(line, sp88, ceil);
+                            }
                         }
                         s32 y = cam->mTargetPos.y;
                         dBgCh_Gnd ground;
@@ -2647,7 +2676,12 @@ s32 func_02009e70(dCamera_c *cam) {
                         ground.SetObjAndPos(sp4c, 0);
                         if (sp1c > (CamMode *)&data_02086fcc)
                             ground.StartDetectingWater();
-                        sb = (ground.DetectClsn() != 0) ? ground.clsnY : y;
+                        {
+                            const int sm64ds_hit = ground.DetectClsn();
+                            SM64DS_CAM_PROBE(2, ground, sm64ds_hit, sp4c, sp4c);
+                            sb = (sm64ds_hit != 0) ? ground.clsnY : y;
+                        }
+#undef SM64DS_CAM_PROBE
                         if (sp1c == (CamMode *)&data_02086ff4) {
                             if (sb < data_0209f32c)
                                 sb = data_0209f32c;
@@ -2686,6 +2720,20 @@ s32 func_02009e70(dCamera_c *cam) {
                             if (sb + 0x25bc8 > (s32)0x80000000)
                                 sp10 = sb + 0x25bc8;
                         }
+#if defined(SM64DS_PLATFORM_PC)
+                        {
+                            /* the follow camera's height limits, for the log (hooks set by
+                               port/vita/savestate_host.cpp) */
+                            extern void (*sm64ds_camera_height_hook)(const void *cam, int ground, int wanted,
+                                                                     int floor_, int ceiling, int probe_y);
+                            extern void (*sm64ds_camera_mode_hook)(const void *mode, int dist, int min_slope,
+                                                                   int max_slope, int r6, int sp04, int flags);
+                            if (sm64ds_camera_mode_hook)
+                                sm64ds_camera_mode_hook(sp1c, sp28, sp2c, sp30, r6, sp04, cam->mFlags);
+                            if (sm64ds_camera_height_hook)
+                                sm64ds_camera_height_hook(cam, sb, (s32)r7h, sp10, ceil, sp4c.y);
+                        }
+#endif
                         if (sp1c != (CamMode *)&data_02087094 &&
                             sp1c != (CamMode *)&data_020870e4 &&
                             sp1c != (CamMode *)&data_0208710c) {
