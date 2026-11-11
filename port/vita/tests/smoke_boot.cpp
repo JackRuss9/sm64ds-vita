@@ -26,6 +26,7 @@
 #include <new>
 #include <stdexcept>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -71,14 +72,18 @@ extern uint8_t *data_ov007_0210342c;    /* the title's work block (include/Ov007
 #include <psp2/power.h>
 #endif
 #include <time.h>
+extern "C" __attribute__((weak)) void sm64ds_log_flush(void);   /* vita_main.cpp */
 
 /* End the process. On the Vita a plain _exit lets the other threads run on
    into the C library's teardown, where one faulted (a crash report after a
    PASS); sceKernelExitProcess stops them all at once. */
+extern "C" void sm64ds_arm7_flush_save(void);   /* port/vita/arm7_host.cpp */
 static void quit(int code)
 {
+    sm64ds_arm7_flush_save();
     fflush(stdout);
     fflush(stderr);
+    if (sm64ds_log_flush) sm64ds_log_flush();
 #if defined(__vita__)
     sceKernelExitProcess(code);
 #endif
@@ -415,6 +420,7 @@ static void pace_frame()
 extern "C" void sm64ds_model_trace_frame(bool arm);   /* model_trace_host.cpp */
 extern "C" const char *sm64ds_glitch_capture_requested(void);   /* model_trace_host.cpp */
 extern "C" bool sm64ds_rear_capture_enabled(void);             /* vita_display.cpp */
+extern "C" void sm64ds_savestate_frame(void);                  /* savestate_host.cpp */
 
 /* The rolling 3D record (gx_ring_enable): 12 MB, about one and a half to two
    seconds of play at full speed (much more when slowed down), always kept
@@ -432,6 +438,10 @@ static void ring_frame(uint64_t frame)
 }
 
 extern "C" void sm64ds_card_stats(uint32_t *reads, uint32_t *bytes, uint32_t *disk, uint64_t *us);
+extern "C" void sm64ds_romfs_stats(unsigned *reads, unsigned *bytes, unsigned long long *us);
+extern "C" void sm64ds_romimage_stats(unsigned *loads, unsigned long long *us);
+extern unsigned long long sm64ds_fs_archived_us;     /* port/hal/fs.cpp */
+extern unsigned sm64ds_fs_archived_n;
 
 /* Loading time, for the log: a game frame that took long (a load) says how
    long and how much of it went to reading the game card; the first frame
@@ -453,12 +463,23 @@ static void load_timing(uint64_t frame)
     if (frame == 1)
         printf("  [load] boot to the first frame: %.0f ms since the start; card reads %u (%u KB, %u from the memory card), %.0f ms of reading\n",
                since_start, (unsigned)r, (unsigned)(b / 1024), (unsigned)d, u / 1000.0);
-    else if (t_prev > 0 && t - t_prev > 250)
-        printf("  [load] frame %u took %.0f ms: card reads %u (%u KB, %u from the memory card), %.0f ms of reading\n",
+    // the game's files (read whole by the port) and the overlays loaded
+    static unsigned fr0, fb0, ml0, an0;
+    static unsigned long long fu0, mu0, au0;
+    unsigned fr, fb, ml;
+    unsigned long long fu, mu;
+    sm64ds_romfs_stats(&fr, &fb, &fu);
+    sm64ds_romimage_stats(&ml, &mu);
+    if (frame != 1 && t_prev > 0 && t - t_prev > 250)
+        printf("  [load] frame %u took %.0f ms: card reads %u (%u KB, %u from the memory card), %.0f ms of reading;"
+               " game files %u (%u KB) %.0f ms; from archives %u, %.0f ms; overlays %u, %.0f ms\n",
                (unsigned)frame, t - t_prev, (unsigned)(r - r0), (unsigned)((b - b0) / 1024),
-               (unsigned)(d - d0), (u - u0) / 1000.0);
+               (unsigned)(d - d0), (u - u0) / 1000.0, fr - fr0, (fb - fb0) / 1024, (fu - fu0) / 1000.0,
+               sm64ds_fs_archived_n - an0, (sm64ds_fs_archived_us - au0) / 1000.0, ml - ml0, (mu - mu0) / 1000.0);
     t_prev = now_ms();
     r0 = r; b0 = b; d0 = d; u0 = u;
+    fr0 = fr; fb0 = fb; fu0 = fu; ml0 = ml; mu0 = mu;
+    an0 = sm64ds_fs_archived_n; au0 = sm64ds_fs_archived_us;
 }
 
 static bool hook(uint64_t frame)
@@ -467,6 +488,7 @@ static bool hook(uint64_t frame)
     pace_frame();
     sm64ds_model_trace_frame(false);
     ring_frame(frame);
+    sm64ds_savestate_frame();       /* a save state asked for: done here, between frames */
     sm64ds_display_tick();
     sm64ds_input_frame();
     sm64ds_arm7_frame();
@@ -567,6 +589,7 @@ static void on_terminate()
     printf("smoke_boot: std::terminate: %s; C heap in use %u KiB of %u KiB\n", what,
            (unsigned)(mi.uordblks / 1024), (unsigned)(mi.arena / 1024));
     fflush(stdout);
+    if (sm64ds_log_flush) sm64ds_log_flush();
     abort();
 }
 
@@ -725,6 +748,23 @@ extern "C" void __wrap_Crash(void)
     char why[96];
     snprintf(why, sizeof why, "the game called Crash() from %p", __builtin_return_address(0));
     dump_state(why);
+    {
+        // who called the caller: the game's return addresses on the stack
+        // (Thumb, odd, inside its code), nearest first, for gate11.syms
+        // the module's code: from NitroMain's page down 1 MB, up 3 MB
+        const uintptr_t at = (uintptr_t)&NitroMain;
+        const uintptr_t lo = (at & ~0xfffffu) > 0x100000 ? (at & ~0xfffffu) - 0x100000 : 0, hi = lo + 0x400000;
+        uintptr_t *sp = (uintptr_t *)__builtin_frame_address(0);
+        printf("  code on the stack (NitroMain %p):", (void *)at);
+        int n = 0;
+        for (int i = 0; i < 1024 && n < 24; ++i)
+            if ((sp[i] & 1) && sp[i] > lo && sp[i] < hi) {
+                printf(" %p", (void *)sp[i]);
+                ++n;
+            }
+        printf("\n");
+        fflush(stdout);
+    }
     fprintf(stderr, "smoke_boot: %s\n", why);
     fflush(stderr);
     note_result("Crash()");
@@ -736,13 +776,20 @@ static void *watchdog(void *)
 {
     uint64_t last = ~0ull;
     int still = 0;
+    // A probe for slow loads: with a folder ux0:data/sm64ds/probe present,
+    // the first frame that takes 3 s ends the game the same way, so the
+    // crash dump shows what the game's thread is busy with. (Rename or
+    // delete the folder to play normally.)
+    struct stat st;
+    const bool probe = stat("ux0:data/sm64ds/probe", &st) == 0;
+    if (probe) printf("  watchdog: probe folder present, a 3 s frame ends the game with a crash dump\n");
     for (;;) {
         usleep(1000000);
         const uint64_t f = ntr::rt_frame();
         still = (f == last && !g_host_io) ? still + 1 : 0;
         last = f;
-        if (still == 15) {
-            dump_state("WATCHDOG: no frame for 15 s");
+        if (still == 15 || (probe && still == 3)) {
+            dump_state(still == 3 ? "PROBE: a frame has taken 3 s" : "WATCHDOG: no frame for 15 s");
             fprintf(stderr, "smoke_boot: the game stopped (watchdog)\n");
             fflush(stderr);
             note_result("watchdog");
@@ -751,6 +798,7 @@ static void *watchdog(void *)
             // thread's registers and stack -- where the stuck one is.
             printf("  (ending with a deliberate fault so the Vita saves a crash dump)\n");
             fflush(stdout);
+            if (sm64ds_log_flush) sm64ds_log_flush();
             __builtin_trap();
         }
     }

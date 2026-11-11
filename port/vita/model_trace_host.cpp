@@ -132,7 +132,10 @@ static void watch(const void *self, const int *mat, const int *scale, const void
     }
     if (e->mc == self && !e->multi && g_frame - e->frame <= 2 && e->size > 0.001) {
         before = e->size;
-        const double r = size / before;
+        double r = size / before;
+        // a model at a fraction of its size (a Piranha Plant shrinking away
+        // as it dies) wobbles by those ratios: not a glitch
+        if (before < 0.25 && size < 0.25) r = 1;
         if (r > 3) what = "grew";
         else if (r < 1.0 / 3) what = "shrank";
     }
@@ -151,7 +154,9 @@ static void watch(const void *self, const int *mat, const int *scale, const void
                mat[4], mat[5], mat[6], mat[7], mat[8], mat[9], mat[10], mat[11]);
         detail(self, nb);
     }
-    if (strcmp(what, "shrank") && g_auto_left > 0 && !g_auto_pending &&
+    // a capture by itself (it stops the game for seconds while it saves)
+    // only for a model blown up past twice its size
+    if (strcmp(what, "shrank") && size >= 2.0 && g_auto_left > 0 && !g_auto_pending &&
         (g_auto_last == 0 || g_frame - g_auto_last > 600) && sm64ds_rear_capture_enabled()) {
         --g_auto_left;
         g_auto_last = g_frame;

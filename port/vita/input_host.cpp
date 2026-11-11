@@ -41,12 +41,19 @@ extern void *data_0209f394[];          /* the players, by slot */
 extern unsigned char gActivePlayerSlot;
 extern short data_02092144[];          /* each player's power, 0x100 a wedge */
 extern short data_0209f358[];          /* each player's coins */
+extern int data_0209d50c;              /* the main loop's step: 7 while playing */
+bool sm64ds_in_game_arena(const void *p);   /* arena_host.cpp: the game's heaps */
+extern char _ZTV6Player[];             /* Player's vtable (its objects point 8 bytes in) */
 void sm64ds_arm7_touch(unsigned x, unsigned y, bool down);     /* arm7_host.cpp */
 bool sm64ds_display_to_touch(int vx, int vy, int *x, int *y);  /* vita_display.cpp */
 bool sm64ds_menu_pad(uint32_t buttons, uint32_t dpad_buttons);  /* vita_display.cpp */
 bool sm64ds_rear_capture_enabled(void);                        /* vita_display.cpp */
 bool sm64ds_right_stick_camera(void);                          /* vita_display.cpp */
+void sm64ds_savestate_request(int action);                     /* savestate_host.cpp */
 extern unsigned char data_0209f4ae[];  /* the controller records' mode byte, 0x18 apart */
+extern volatile int sm64ds_wide_view;  /* vita_display.cpp: the 3D drawn 16:9 */
+extern unsigned char data_0209f43c[];  /* the view clipper (dClipper) */
+void _ZN8dClipper13Func_0201559CEv(void *self);  /* dClipper: rebuild the frustum planes */
 }
 
 namespace {
@@ -71,9 +78,15 @@ void put16(uint32_t ds, uint16_t v) { *static_cast<volatile uint16_t *>(::ntr::h
 void apply_cheats(uint32_t vita_buttons)
 {
     if (sm64ds_cheat_infinite_lives && data_0209f2f4 < 4) data_0209f2f4 = 4;
-    // the player in play (none on the title, in menus or between levels)
+    // the player in play: only while playing (main-loop step 7). Between
+    // levels the slot can still hold the last level's player, already freed:
+    // the breath cheat's store into it landed in the next level's data while
+    // it loaded (the particle textures' table: "out of video memory" on
+    // entering the castle).
     const unsigned slot = gActivePlayerSlot;
-    char *player = slot < 4 ? static_cast<char *>(data_0209f394[slot]) : nullptr;
+    char *player = (data_0209d50c == 7 && slot < 4) ? static_cast<char *>(data_0209f394[slot]) : nullptr;
+    if (player && !sm64ds_in_game_arena(player)) player = nullptr;
+    if (player && *reinterpret_cast<void **>(player) != _ZTV6Player + 8) player = nullptr;   // a live Player
     const unsigned no = player ? *reinterpret_cast<uint8_t *>(player + 0x6d8) : 0;   /* mPlayerNo */
     // power: the meter is data_02092144[player] / 0x100 wedges, 8 full
     if (sm64ds_cheat_infinite_power && player && no < 4 && data_02092144[no] < 0x800 && data_02092144[no] > 0)
@@ -86,8 +99,8 @@ void apply_cheats(uint32_t vita_buttons)
     // level's 100-coin star
     if (sm64ds_cheat_99_coins && player && no < 4 && data_0209f358[no] < 99) data_0209f358[no] = 99;
     if (sm64ds_cheat_moon_jump && (vita_buttons & SCE_CTRL_CIRCLE)) {
-        if (slot < 4 && data_0209f394[slot]) {
-            int32_t *vert = reinterpret_cast<int32_t *>(static_cast<char *>(data_0209f394[slot]) + 0xa8);
+        if (player) {
+            int32_t *vert = reinterpret_cast<int32_t *>(player + 0xa8);
             if (*vert < 0x14000) *vert = 0x14000;
         }
     }
@@ -144,7 +157,28 @@ void sm64ds_input_frame(void)
     // Circle) take the buttons while open
     const bool menu = sm64ds_menu_pad(b, pad.buttons);
     if (menu) b = 0;
+    // save states: D-pad Up + R saves, D-pad Down + L loads (the physical
+    // D-pad, as for the menus); the game does not see the pair
+    {
+        static bool save_held, load_held;
+        const uint32_t raw = pad.buttons;
+        const bool save = !menu && (raw & SCE_CTRL_UP) && (raw & (SCE_CTRL_RTRIGGER | 0x800u));
+        const bool load = !menu && (raw & SCE_CTRL_DOWN) && (raw & (SCE_CTRL_LTRIGGER | 0x400u));
+        if (save && !save_held) sm64ds_savestate_request(1);
+        if (load && !load_held) sm64ds_savestate_request(2);
+        save_held = save;
+        load_held = load;
+        if (save) b &= ~(uint32_t)(SCE_CTRL_UP | SCE_CTRL_RTRIGGER | 0x800u);
+        if (load) b &= ~(uint32_t)(SCE_CTRL_DOWN | SCE_CTRL_LTRIGGER | 0x400u);
+    }
     apply_cheats(b);
+    // widescreen on or off: the view clipper's frustum rebuilt for the width
+    // shown (the camera rebuilds it too, but not every frame)
+    static int wide_applied = 0;
+    if (sm64ds_wide_view != wide_applied) {
+        wide_applied = sm64ds_wide_view;
+        _ZN8dClipper13Func_0201559CEv(data_0209f43c);
+    }
     for (const auto &m : kMap)
         if (b & m.vita) keys &= static_cast<uint16_t>(~m.ds);
     if (b & SCE_CTRL_TRIANGLE) xy &= static_cast<uint16_t>(~(1u << 10));

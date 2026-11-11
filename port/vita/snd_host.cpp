@@ -197,6 +197,7 @@ struct Driver {
     u32 unknown_op_seen[8];
 } g;
 std::mutex g_lock;
+unsigned g_track_fail, g_end_logs;      // for the log: track pool full, multi-track sequences ending
 
 u32 rnd() { g.rng = g.rng * 1664525u + 1013904223u; return g.rng >> 8; }
 
@@ -606,6 +607,7 @@ void run_track(int ti)
             Player &pl = g.pl[t.player];
             if (n < 16 && pl.tracks[n] < 0) {
                 const int nt = alloc_track();
+                if (nt < 0) ++g_track_fail;
                 if (nt >= 0) {
                     init_track(g.tr[nt], t.player, t.base, off);
                     pl.tracks[n] = (s8)nt;
@@ -763,6 +765,13 @@ void step_players()
                     if (g.ch[i].active && g.ch[i].seq && g.ch[i].track >= 0 && g.tr[g.ch[i].track].player == p)
                         sounding = true;
                 if (!sounding) {
+                    int nt = 0;
+                    for (int k = 0; k < 16; ++k) nt += pl.tracks[k] >= 0;
+                    if (nt > 2 && g_end_logs < 50) {
+                        ++g_end_logs;
+                        printf("  [sound] player %d's sequence ended by itself at tick %u (%d tracks)\n", p,
+                               (unsigned)pl.ticks, nt);
+                    }
                     stop_player(p);
                     break;
                 }
@@ -890,7 +899,7 @@ void start_seq(int p, const u8 *base, u32 offset, const u8 *bank)
     if (pl.prio == 0) pl.prio = 64;
     for (int k = 0; k < 16; ++k) pl.tracks[k] = -1;
     const int ti = alloc_track();
-    if (ti < 0) { pl.active = false; return; }
+    if (ti < 0) { ++g_track_fail; pl.active = false; return; }
     init_track(g.tr[ti], p, base, offset);
     pl.tracks[0] = (s8)ti;
     ++g.seqs_started;
@@ -934,7 +943,18 @@ void command(int id, const u32 *a)
 {
     switch (id) {
     case CMD_START_SEQ: start_seq((int)a[0], ptr<const u8>(a[1]), a[2], ptr<const u8>(a[3])); break;
-    case CMD_STOP_SEQ: if (a[0] < PLAYERS) stop_player((int)a[0]); break;
+    case CMD_STOP_SEQ:
+        if (a[0] < PLAYERS) {
+            int nt = 0;
+            for (int k = 0; k < 16; ++k) nt += g.pl[a[0]].tracks[k] >= 0;
+            if (nt > 2 && g_end_logs < 50) {
+                ++g_end_logs;
+                printf("  [sound] player %u's sequence stopped by the game at tick %u (%d tracks)\n",
+                       (unsigned)a[0], (unsigned)g.pl[a[0]].ticks, nt);
+            }
+            stop_player((int)a[0]);
+        }
+        break;
     case CMD_PAUSE_SEQ:
         if (a[0] < PLAYERS) {
             g.pl[a[0]].paused = a[1] != 0;
@@ -1078,13 +1098,41 @@ int audio_thread(SceSize, void *)
             printf("  [sound] %u sequences started, %u notes, %d channels playing, %u unknown commands",
                    g.seqs_started, g.notes, active, g.unknown_ops);
             for (unsigned k = 0; k < g.unknown_ops && k < 8; ++k) printf(" %02x", (unsigned)g.unknown_op_seen[k]);
-            printf("\n");
+            // the players, for "the music stopped" reports
+            int used = 0;
+            for (const Track &t : g.tr) used += t.allocated;
+            printf("; tracks in use %d/%d, locked channels %04x, failed track opens %u\n", used, TRACKS,
+                   (unsigned)g.locked, g_track_fail);
+            for (int p = 0; p < PLAYERS; ++p) {
+                const Player &pl = g.pl[p];
+                if (!pl.active) continue;
+                int nt = 0, live = 0;
+                for (int k = 0; k < 16; ++k)
+                    if (pl.tracks[k] >= 0) { ++nt; live += g.tr[pl.tracks[k]].active; }
+                printf("    player %d: %d tracks (%d running)%s, volume %u fader %d, tempo %u, tick %u\n", p, nt, live,
+                       pl.paused ? ", PAUSED" : "", pl.volume, pl.ext_fader, pl.tempo, (unsigned)pl.ticks);
+            }
         }
     }
     return 0;
 }
 #endif
 }  // namespace
+
+/* The driver's whole state, for save states (port/vita/savestate_host.cpp):
+   its channels, players and tracks point into the game's memory, which is
+   saved and restored with it. */
+extern "C" unsigned sm64ds_snd_state_size(void) { return sizeof g; }
+extern "C" void sm64ds_snd_state_save(void *out)
+{
+    std::lock_guard<std::mutex> lock(g_lock);
+    memcpy(out, &g, sizeof g);
+}
+extern "C" void sm64ds_snd_state_load(const void *in)
+{
+    std::lock_guard<std::mutex> lock(g_lock);
+    memcpy(&g, in, sizeof g);
+}
 
 extern "C" {
 

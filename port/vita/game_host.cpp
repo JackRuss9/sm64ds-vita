@@ -20,6 +20,7 @@
 
 #include "ntr/mmio.h"
 #include "ntr/rt.h"
+extern "C" __attribute__((weak)) void sm64ds_log_flush(void);   /* vita_main.cpp */
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -30,6 +31,7 @@ typedef int32_t s32;
 {
     fprintf(stderr, "FATAL: %s reached; port/vita/game_host.cpp does not "
                     "implement it yet\n", who);
+    if (sm64ds_log_flush) sm64ds_log_flush();
     abort();
 }
 
@@ -286,3 +288,10 @@ unsigned int GetDTCMBaseAddress(void) { return 0x023C0000u; }
    once the thread unmasks. */
 void WaitForInterrupt(void) { ::Halt(); }
 }  // namespace CP15
+
+/* A message on the screen (port/vita/vita_display.cpp has the real one; the
+   gates without a display get this, which does nothing). */
+extern "C" __attribute__((weak)) void sm64ds_display_toast(const char *) {}
+/* Player.cpp's root-motion trace (gate 11 logs it, savestate_host.cpp). */
+extern "C" __attribute__((weak)) void sm64ds_rootmotion_log(int, int, const int *, const int *, const int *,
+                                                            const int *, int, const void *, int, int) {}

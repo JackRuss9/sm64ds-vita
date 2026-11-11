@@ -1038,7 +1038,19 @@ void Player::SetRealCharacter(unsigned int chr_)
     mCapFlags = 0;
 
     m1 = this->GetBodyModelID(chr, 0);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The new character's body model takes over the old one's animation:
+       its new file, but the old model's frame count and frame. param1 is
+       already the new character here, so as written the model copies from
+       itself, and a model never animated before (Mario's, freed from his
+       room while playing Yoshi) keeps a frame count it never had set: its
+       frame ran past the file's end, the walk out of the door read the
+       file's bone table as movement, and Mario jumped about. Copy from the
+       old character's model. */
+    m2 = this->GetBodyModelID(cur & 0xff, 0);
+#else
     m2 = this->GetBodyModelID(param1 & 0xff, 0);
+#endif
     mModels.mBodyModels[m1]->Copy(*mModels.mBodyModels[m2],
                                   (char *)data_ov002_020ff480[mCharFileBase + chr]->filePtr, 0);
     m1 = this->GetBodyModelID(chr, 0);
@@ -24633,6 +24645,17 @@ void func_ov002_020e640c(char *c)
                 ((Player *)c)->mStateAnchorY = ((Player *)c)->mStateTargetY;
                 ((Player *)c)->mStateAnchorZ = ((Player *)c)->mStateTargetZ;
                 ((Player *)c)->mRootMotionMode++;
+#if defined(SM64DS_PLATFORM_PC)
+                {
+                    extern void sm64ds_rootmotion_log(int kind, int mode, const int *bone, const int *target,
+                                                      const int *pos_before, const int *pos_after, int angle,
+                                                      const void *model, int fileBase, int character);
+                    sm64ds_rootmotion_log(0, b, &((PlayerBone *)md)[1].transX, &((Player *)c)->mStateTargetX,
+                                          (const int *)&player->mPos, (const int *)&player->mPos, player->mAngleY,
+                                          (const void *)player->mModels.mBodyModels[id], (int)player->mCharFileBase,
+                                          (int)player->param1);
+                }
+#endif
             } else {
                 d.x = (((PlayerBone *)md)[1].transX - ((Player *)c)->mStateTargetX) << 3;
                 if (((Player *)c)->mRootMotionMode < 3)
@@ -24640,7 +24663,23 @@ void func_ov002_020e640c(char *c)
                 else
                     d.y = (((PlayerBone *)md)[1].transY - ((Player *)c)->mStateTargetY) << 3;
                 d.z = (((PlayerBone *)md)[1].transZ - ((Player *)c)->mStateTargetZ) << 3;
+#if defined(SM64DS_PLATFORM_PC)
+                int sm64ds_before[6] = {player->mPos.x, player->mPos.y, player->mPos.z,
+                                        ((Player *)c)->mStateTargetX, ((Player *)c)->mStateTargetY,
+                                        ((Player *)c)->mStateTargetZ};
+#endif
                 Vec3_RotateYAndTranslate(&player->mPos, &player->mPos, player->mAngleY, &d);
+#if defined(SM64DS_PLATFORM_PC)
+                {
+                    extern void sm64ds_rootmotion_log(int kind, int mode, const int *bone, const int *target,
+                                                      const int *pos_before, const int *pos_after, int angle,
+                                                      const void *model, int fileBase, int character);
+                    sm64ds_rootmotion_log(1, b, &((PlayerBone *)md)[1].transX, sm64ds_before + 3, sm64ds_before,
+                                          (const int *)&player->mPos, player->mAngleY,
+                                          (const void *)player->mModels.mBodyModels[id], (int)player->mCharFileBase,
+                                          (int)player->param1);
+                }
+#endif
                 ((Player *)c)->mStateTargetX = ((PlayerBone *)md)[1].transX;
                 if (((Player *)c)->mRootMotionMode >= 3)
                     ((Player *)c)->mStateTargetY = ((PlayerBone *)md)[1].transY;

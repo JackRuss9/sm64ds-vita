@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "ntr/mmio.h"
+extern "C" __attribute__((weak)) void sm64ds_log_flush(void);   /* vita_main.cpp */
 
 typedef unsigned int u32;
 struct Vector3;
@@ -31,6 +32,7 @@ namespace Sound { void PlayBank3(u32, const Vector3 &); }
 {
     fprintf(stderr, "FATAL: %s reached; port/vita/actor_host.cpp only links "
                     "it (the subsystem is not hosted yet)\n", who);
+    if (sm64ds_log_flush) sm64ds_log_flush();
     abort();
 }
 

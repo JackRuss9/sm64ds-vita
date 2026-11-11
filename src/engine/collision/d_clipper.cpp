@@ -144,6 +144,16 @@ void dClipper::Func_0201559C() {
     int tanHalfFov = cstd::fdiv(data_02082214[2 * angleIndex], data_02082214[2 * angleIndex + 1]);
     Fix12i halfHeight = FX_MUL(mNearZ, tanHalfFov);
     Fix12i halfWidth = FX_MUL(mAspectRatio, halfHeight);
+#if defined(SM64DS_PLATFORM_PC)
+    /* The Vita's 16:9 layout shows the scene 4/3 as wide as the DS's view:
+       the frustum widens with it, so what comes into the extra width on
+       either side is already there, not appearing at the edge. */
+    {
+        /* the Vita display sets it; a build without one leaves it out */
+        extern volatile int sm64ds_wide_view __attribute__((weak));
+        if (&sm64ds_wide_view && sm64ds_wide_view) halfWidth = halfWidth * 4 / 3;
+    }
+#endif
     Vector3 corner0, corner1, corner2, corner3;
     corner0.x = -halfWidth;
     corner0.y = -halfHeight;

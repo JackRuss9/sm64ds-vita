@@ -17,9 +17,20 @@ extern char OV075_BSS_END;
 extern char OV100_TEXT_START;
 extern mHeap::Heap_t *data_0209d524;
 
+#if defined(SM64DS_PLATFORM_PC)
+/* The gap between the overlays is a DS address, nothing on the host (VS mode
+   and download play crashed here): the port lends a block of the same size
+   that counts as game memory (port/vita/arena_host.cpp). */
+void *sm64ds_overlay_gap(unsigned int size);
+#endif
 void func_0201a458(void) {
+#if defined(SM64DS_PLATFORM_PC)
+    const unsigned int size = (unsigned int)(&OV100_TEXT_START - &OV075_BSS_END);
+    data_0209d524 = mHeap::Heap_t::CreateRootHeap(sm64ds_overlay_gap(size), size);
+#else
     data_0209d524 = mHeap::Heap_t::CreateRootHeap(
         &OV075_BSS_END, (unsigned int)(&OV100_TEXT_START - &OV075_BSS_END));
+#endif
 }
 
 /* Destroy the overlay-gap heap func_0201a458 made and forget it. */

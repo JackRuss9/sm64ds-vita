@@ -6,6 +6,7 @@
 // without a trip to the console for every change.
 //
 //   snapshot_render <snapshot.bin> <out_prefix>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <cstdlib>
@@ -126,6 +127,27 @@ int main(int argc, char **argv)
                 ntr::gx_replay(gx.data() + from, i - from);
                 from = i;
                 ntr::gx_render_layer(one);
+                if (const char *pf = std::getenv("SNAP_PIXEL_FRAME")) {
+                    // that frame's triangles under SNAP_PIXEL=x,y
+                    int qx = 0, qy = 0;
+                    if ((unsigned)std::atoi(pf) == tag && std::getenv("SNAP_PIXEL") &&
+                        std::sscanf(std::getenv("SNAP_PIXEL"), "%d,%d", &qx, &qy) == 2) {
+                        size_t nt = 0;
+                        const ntr::GxTriangle *tt = ntr::gx_polygons(nt);
+                        for (size_t k = 0; k < nt; ++k) {
+                            float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+                            for (int c = 0; c < 3; ++c) {
+                                x0 = std::fmin(x0, tt[k].v[c].x); x1 = std::fmax(x1, tt[k].v[c].x);
+                                y0 = std::fmin(y0, tt[k].v[c].y); y1 = std::fmax(y1, tt[k].v[c].y);
+                            }
+                            if (qx < x0 || qx > x1 || qy < y0 || qy > y1) continue;
+                            std::printf("  frame %u at %d,%d: tri %zu tex %p %dx%d attr %08x (mode %u) colors %08x %08x %08x\n",
+                                        tag, qx, qy, k, (const void *)tt[k].tex, tt[k].tw, tt[k].th, tt[k].attr,
+                                        (tt[k].attr >> 4) & 3, tt[k].v[0].color, tt[k].v[1].color, tt[k].v[2].color);
+                        }
+                        std::printf("  frame %u layer at %d,%d: %08x\n", tag, qx, qy, one.px[qy][qx]);
+                    }
+                }
                 char fn[512];
                 std::snprintf(fn, sizeof fn, "%s_f%05u_3d.bmp", argv[2], tag);
                 ntr::ppu_write_bmp(fn, one);
@@ -151,6 +173,25 @@ int main(int argc, char **argv)
                         t[i].v[k].v, t[i].v[k].color);
     }
 
+    // SNAP_PIXEL=x,y: every triangle whose box holds that pixel, in order
+    if (const char *px = std::getenv("SNAP_PIXEL")) {
+        int qx = 0, qy = 0;
+        std::sscanf(px, "%d,%d", &qx, &qy);
+        for (size_t i = 0; i < ntri; ++i) {
+            float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+            for (int k = 0; k < 3; ++k) {
+                x0 = std::fmin(x0, t[i].v[k].x); x1 = std::fmax(x1, t[i].v[k].x);
+                y0 = std::fmin(y0, t[i].v[k].y); y1 = std::fmax(y1, t[i].v[k].y);
+            }
+            if (qx < x0 || qx > x1 || qy < y0 || qy > y1) continue;
+            std::printf("  at %d,%d: tri %zu tex %p %dx%d attr %08x (alpha %u, mode %u, id %u, depth-write %u, "
+                        "depth-equal %u, fog %u) translucent %d z %.4f %.4f %.4f color %08x\n",
+                        qx, qy, i, (const void *)t[i].tex, t[i].tw, t[i].th, t[i].attr, (t[i].attr >> 16) & 31,
+                        (t[i].attr >> 4) & 3, (t[i].attr >> 24) & 63, (t[i].attr >> 11) & 1, (t[i].attr >> 14) & 1,
+                        (t[i].attr >> 15) & 1, (int)t[i].translucent, t[i].v[0].z, t[i].v[1].z, t[i].v[2].z,
+                        t[i].v[0].color);
+        }
+    }
     static ntr::Framebuffer fb, g3d;
     char name[512];
     // each engine composed as the DS shows it (ppu_compose), the 3D layer
@@ -172,6 +213,12 @@ int main(int argc, char **argv)
                     (t1 - t0) / n, (t2 - t1) / n, n);
     }
     ntr::gx_render_layer(g3d);
+    if (const char *px = std::getenv("SNAP_PIXEL")) {
+        int qx = 0, qy = 0;
+        std::sscanf(px, "%d,%d", &qx, &qy);
+        if (qx >= 0 && qx < ntr::SCREEN_W && qy >= 0 && qy < ntr::SCREEN_H)
+            std::printf("  3D layer at %d,%d: %08x (alpha %u)\n", qx, qy, g3d.px[qy][qx], g3d.px[qy][qx] >> 24);
+    }
     const bool has3d = *static_cast<const uint32_t *>(ntr::host_ptr(0x04000000)) & 8;
     for (int e = 0; e < 2; ++e) {
         const ntr::Engine eng = e ? ntr::ENGINE_B : ntr::ENGINE_A;

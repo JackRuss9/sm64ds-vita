@@ -18,7 +18,14 @@
 // SM64DS_LOG_DIR can be overridden at build time to test this wrapper on a
 // desktop or under QEMU, where "ux0:" does not exist.
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
+#if defined(__vita__)
+#include <psp2/kernel/threadmgr.h>
+#else
+#include <pthread.h>
+#include <unistd.h>
+#endif
 
 #ifndef SM64DS_GATE_NAME
 #error "define SM64DS_GATE_NAME (e.g. gate1)"
@@ -44,6 +51,43 @@ int sm64ds_test_main();
 #endif
 extern "C" { int _newlib_heap_size_user = SM64DS_VITA_HEAP_MB * 1024 * 1024; }
 extern "C" { FILE *sm64ds_log_file = nullptr; }   // read by vita_log.h
+
+/* The log's flusher (see main). sm64ds_log_flush is also called before the
+   port's deliberate stops (abort, the watchdog's fault). */
+extern "C" void sm64ds_log_flush(void)
+{
+    if (FILE *f = sm64ds_log_file) fflush(f);
+}
+#if defined(__vita__)
+/* A kernel thread, not a pthread: the early gates link no pthread library. */
+static int log_flusher(SceSize, void *)
+{
+    for (;;) {
+        sceKernelDelayThread(250000);
+        sm64ds_log_flush();
+    }
+    return 0;
+}
+static void start_log_flusher()
+{
+    const SceUID th = sceKernelCreateThread("sm64ds_log", log_flusher, 0x10000100 + 8, 16 * 1024, 0, 0, nullptr);
+    if (th >= 0) sceKernelStartThread(th, 0, nullptr);
+}
+#else
+static void *log_flusher(void *)
+{
+    for (;;) {
+        usleep(250000);
+        sm64ds_log_flush();
+    }
+    return nullptr;
+}
+static void start_log_flusher()
+{
+    pthread_t th;
+    pthread_create(&th, nullptr, log_flusher, nullptr);
+}
+#endif
 #if defined(SM64DS_VITA_PREINIT)
 extern "C" bool sm64ds_vita_preinit(void);   // port/hal/romdata_rom.cpp
 #endif
@@ -66,7 +110,14 @@ int main()
         append_result("NO-LOG", -1);
         return 0;
     }
-    setvbuf(log, nullptr, _IONBF, 0);   // nothing waits in a buffer if it faults
+    // Buffered, flushed four times a second by a thread of its own and at
+    // every deliberate stop. Unbuffered, every printf was its own write to
+    // the memory card, a few ms each: the castle's first load logs a few
+    // thousand lines, and that alone was most of its 15 seconds. (A hard
+    // fault can lose the last quarter second; the buffer is in the dump.)
+    static char log_buf[64 * 1024];
+    setvbuf(log, log_buf, _IOFBF, sizeof log_buf);
+    start_log_flusher();
 
     fprintf(log, "== SM64DS port, %s on PS Vita ==\n", SM64DS_GATE_NAME);
 

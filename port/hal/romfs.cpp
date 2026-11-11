@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 namespace romfs {
 namespace {
@@ -34,8 +35,27 @@ inline uint32_t rd32(const uint8_t *p) {
 }
 inline uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 
+}  // namespace
+// Reads of game files, for the log's slow-frame lines: count, bytes, time.
+unsigned g_span_reads, g_span_bytes;
+unsigned long long g_span_us;
+namespace {
+unsigned long long now_us() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000000u + (unsigned long long)ts.tv_nsec / 1000u;
+}
+uint8_t *read_span_timed(uint32_t off, uint32_t len);
 // Read [off, off+len) of the image, malloc'd; nullptr if out of range.
 uint8_t *read_span(uint32_t off, uint32_t len) {
+    const unsigned long long t0 = now_us();
+    uint8_t *r = read_span_timed(off, len);
+    ++g_span_reads;
+    g_span_bytes += len;
+    g_span_us += now_us() - t0;
+    return r;
+}
+uint8_t *read_span_timed(uint32_t off, uint32_t len) {
     if ((long)off > g_rom_size || (long)len > g_rom_size - (long)off) return nullptr;
     uint8_t *buf = (uint8_t *)malloc(len ? len : 1);
     if (!buf) return nullptr;
@@ -397,3 +417,10 @@ uint8_t *read_file(unsigned file_id, size_t *size) {
 }
 
 }  // namespace romfs
+
+extern "C" void sm64ds_romfs_stats(unsigned *reads, unsigned *bytes, unsigned long long *us)
+{
+    *reads = romfs::g_span_reads;
+    *bytes = romfs::g_span_bytes;
+    *us = romfs::g_span_us;
+}

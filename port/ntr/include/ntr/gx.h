@@ -51,6 +51,8 @@ struct GxTriangle {
     // TEXIMAGE_PARAM bits 16-19: repeat S, repeat T, flip S, flip T (a
     // texture that neither repeats nor flips is clamped to its edge texels)
     uint8_t wrap = 3;
+    // drawn after the opaque ones (alpha under 31, or an A3I5/A5I3 texture)
+    bool translucent = false;
 };
 
 // Feed the engine. `gx_write_port` takes a geometry-port address in
@@ -108,6 +110,10 @@ void gx_replay(const uint32_t *words, size_t count);
 // gx_ring_view points at the whole frames still held (from just after a
 // SWAP_BUFFERS) up to now, `frames` of them, in place: one or two runs of
 // the circular buffer, in order; it returns the words in all.
+// Called (from whichever thread drops the last reference) as decoded texels
+// are freed, with the address a triangle's `tex` pointed at: a cache keyed by
+// that address must forget it, as the next texture may be decoded there.
+void gx_set_texture_free_hook(void (*hook)(const uint32_t *texels));
 void gx_ring_enable(size_t words);
 bool gx_ring_active();
 void gx_ring_mark(uint32_t tag);

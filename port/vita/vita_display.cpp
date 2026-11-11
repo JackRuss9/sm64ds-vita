@@ -44,6 +44,9 @@
 
 /* The cheats (the cheats menu below; applied by port/vita/input_host.cpp). */
 extern "C" {
+/* The 3D is drawn 16:9 (the WIDESCREEN layout): the game culls for that
+   width (src/engine/collision/d_clipper.cpp, input_host.cpp). */
+volatile int sm64ds_wide_view;
 volatile int sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
     sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins;
 }
@@ -162,6 +165,16 @@ void fps_line(uint32_t *fb, int x0 = 12, int y0 = 12, int stride = VW)
     draw_text(fb, x0, y0, line, stride);
 }
 
+double seconds();
+/* A short message on the text line ("STATE SAVED"), for two seconds. */
+char g_toast[48];
+double g_toast_until;
+void toast_line(uint32_t *fb, int x0, int y0, int stride, bool below_fps)
+{
+    if (!g_toast[0] || seconds() > g_toast_until) return;
+    draw_text(fb, x0 + (below_fps ? 560 : 0), y0, g_toast, stride);
+}
+
 double seconds()
 {
     struct timespec ts;
@@ -215,7 +228,7 @@ struct MenuItem {
 };
 const MenuItem kSettingsItems[] = {
     {"SCREEN LAYOUT", "layout", &g_layout, 0, NLAYOUTS - 1, 1},
-    {"3D RESOLUTION", "resolution", &g_scale, 1, 4, 2},
+    {"3D RESOLUTION", "resolution", &g_scale, 0, 4, 2},
     {"FRAME RATE", "show_fps", &g_show_fps, 0, 1, 3},
     {"REAR TAP CAPTURES", "rear_capture", &g_rear_capture, 0, 1, 0},
     {"GAME SPEED", "game_speed", &g_speed_idx, 0, 4, 4},
@@ -246,7 +259,11 @@ const char *menu_value(const MenuItem &m, char *buf, size_t n)
     const int v = *m.value;
     switch (m.kind) {
     case 1: return kLayouts[v].name;
-    case 2: snprintf(buf, n, "%dX (%dX%d)", v, 256 * v, 192 * v); return buf;
+    case 2:
+        // 0: the size the top screen has on the display in this layout
+        if (v == 0) snprintf(buf, n, "SCREEN SIZE (%dX%d)", kLayouts[g_layout].top[2], kLayouts[g_layout].top[3]);
+        else snprintf(buf, n, "%dX (%dX%d)", v, 256 * v, 192 * v);
+        return buf;
     case 3: return v ? "SHOWN" : "HIDDEN";
     case 4: snprintf(buf, n, "%d PERCENT", kSpeeds[v]); return buf;
     default: return v ? "ON" : "OFF";
@@ -279,6 +296,10 @@ void settings_load()
             }
     }
     fclose(f);
+    printf("  settings: layout %d (%s), 3D %d, game speed %d%%, cheats: lives %d moon jump %d power %d breath %d"
+           " coins %d\n", g_layout, kLayouts[g_layout].name, g_scale, kSpeeds[g_speed_idx],
+           sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
+           sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins);
 }
 
 // the open menu's picture: drawn again only when what it shows changes
@@ -441,7 +462,16 @@ int draw_thread(SceSize, void *)
         uint16_t powcnt_now;
         memcpy(&powcnt_now, regions[4] + 0x304, 2);
         const bool wide = g_gl && kLayouts[g_layout].wide && (powcnt_now & 0x8000);
-        if (g_copy.has3d && g_gl) sm64ds_gl_render_3d(g_copy.frame3d, nullptr, g_scale, wide);
+        sm64ds_wide_view = wide;     /* the game's view culling follows (d_clipper.cpp) */
+        // "screen size": the 3D drawn at exactly the size its screen has on
+        // the display -- no more pixels than the Vita shows, none scaled up
+        int nw = 0, nh = 0;
+        if (g_scale == 0) {
+            const int *r = (powcnt_now & 0x8000) ? kLayouts[g_layout].top : kLayouts[g_layout].bottom;
+            nw = r[2];
+            nh = r[3];
+        }
+        if (g_copy.has3d && g_gl) sm64ds_gl_render_3d(g_copy.frame3d, nullptr, g_scale, wide, nw, nh);
         else
 #endif
         if (g_copy.has3d) ntr::gx_render_frame(g_copy.frame3d, g_copy.g3d);
@@ -485,6 +515,7 @@ int draw_thread(SceSize, void *)
             static uint32_t text[960 * 16];
             memset(text, 0, sizeof text);       // transparent but for the line
             if (g_show_fps) fps_line(text, 0, 1, 960);
+            toast_line(text, 0, 1, 960, g_show_fps);
             const Layout &l = kLayouts[g_layout];
             GlScreens sc;
             sc.a = &a;
@@ -524,6 +555,7 @@ int draw_thread(SceSize, void *)
         }
 #endif
         if (g_show_fps) fps_line(g_fb);
+        toast_line(g_fb, 12, 12, VW, g_show_fps);
         if (g_menu_open >= 0) {             // the menu, in the middle
             render_menu();
             for (int y = 0; y < MENU_H; ++y)
@@ -777,5 +809,12 @@ extern "C" bool sm64ds_display_to_touch(int vx, int vy, int *x, int *y)
     *x = vx * ntr::SCREEN_W / r[2];
     *y = vy * ntr::SCREEN_H / r[3];
     return true;
+}
+
+/* A message on the text line for two seconds (save states, port/vita/savestate_host.cpp). */
+extern "C" void sm64ds_display_toast(const char *msg)
+{
+    snprintf(g_toast, sizeof g_toast, "%s", msg);
+    g_toast_until = seconds() + 2.0;
 }
 

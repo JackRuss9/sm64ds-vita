@@ -167,12 +167,29 @@ void save_load(u32 size)
     }
     fflush(stdout);
 }
-void save_flush()
+/* The game writes its save a page at a time -- hundreds of small writes
+   when it saves -- and each rewrote the whole file on the memory card: the
+   game stopped for seconds (a star collected, a door opened). Now a write
+   only marks the copy in memory changed; the file is written once the
+   writes have stopped for a few frames (save_frame, from sm64ds_arm7_frame). */
+bool g_save_dirty;
+unsigned g_save_quiet;                  // frames since the last write
+void save_write_file()
 {
     if (FILE *f = fopen(SM64DS_SAVE_PATH, "wb")) {
         fwrite(g_save, 1, g_save_size, f);
         fclose(f);
     }
+    g_save_dirty = false;
+}
+void save_flush()
+{
+    g_save_dirty = true;
+    g_save_quiet = 0;
+}
+void save_frame()
+{
+    if (g_save_dirty && ++g_save_quiet >= 20) save_write_file();
 }
 u32 clip(u32 off, u32 len) { return off >= g_save_size ? 0 : (len > g_save_size - off ? g_save_size - off : len); }
 
@@ -298,6 +315,7 @@ void sm64ds_arm7_touch(unsigned x, unsigned y, bool down)
    sends them at its chosen V-counts. */
 void sm64ds_arm7_frame(void)
 {
+    save_frame();
     if (!g_tp_auto || !data_020a7fc8[TAG_TP]) return;
     tp_store();
     const u32 n = g_tp_freq > 4 ? 4 : g_tp_freq;
@@ -321,3 +339,9 @@ int __wrap_PXI_SendWordByFifo(unsigned tag, unsigned data, unsigned rep)
 }
 
 }  // extern "C"
+
+/* The save written now if it changed (the game ending). */
+extern "C" void sm64ds_arm7_flush_save(void)
+{
+    if (g_save_dirty) save_write_file();
+}

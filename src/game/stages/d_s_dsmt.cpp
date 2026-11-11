@@ -43,6 +43,11 @@
 #include "Memory.h"
 #include "GX.h"
 #include "math/CalcLib.h"
+#if defined(SM64DS_PLATFORM_PC)
+/* port/vita/vita_display.cpp: a message on the Vita's screen */
+extern "C" void sm64ds_display_toast(const char *msg);   /* a do-nothing default in port/vita/game_host.cpp */
+#endif
+
 
 extern "C" {
 extern FileSaveData *data_0209b33c;
@@ -276,7 +281,16 @@ s32 dScDSMT_c::Behavior() {
         }
         func_02013c84(saveSlot, data_0209b33c + saveSlot, -1, data_0209caa0);
         StartFile(1, 0);
+#if defined(SM64DS_PLATFORM_PC)
     } else if (result == 6) {
+        /* VS mode needs the DS's wireless, which the port does not have:
+           its lobby (dScEntry_c, ov075) crashed. Back to the title. */
+        sm64ds_display_toast("VS MODE NEEDS DS WIRELESS");
+        dScene_c::StartSceneFade(1, 0, 0x7fff);
+    } else if (result == 6 + 0x1000) {
+#else
+    } else if (result == 6) {
+#endif
         if (data_0209d524 == 0) {
             Heap *archiveHeap = (Heap *)func_0201a458();
             Heap *previousHeap = archiveHeap->SetDefault();

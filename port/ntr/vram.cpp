@@ -16,6 +16,7 @@
 // vram_pltt_addr. Remaps are rare (a few per scene), so the copies cost
 // nothing that matters. port/ntr/io.cpp calls vram_cnt_write on every store
 // to VRAMCNT_A..I.
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -82,6 +83,21 @@ void copy(uint32_t dst, uint32_t src, uint32_t n)
 }
 
 }  // namespace
+
+/* The banks' mapping, for save states (port/vita/savestate_host.cpp): saved
+   and restored with the VRAM window it describes. */
+size_t vram_state_size() { return sizeof g_view + sizeof g_cnt; }
+void vram_state_save(uint8_t *out)
+{
+    memcpy(out, g_view, sizeof g_view);
+    memcpy(out + sizeof g_view, g_cnt, sizeof g_cnt);
+}
+void vram_state_load(const uint8_t *in)
+{
+    memcpy(g_view, in, sizeof g_view);
+    memcpy(g_cnt, in + sizeof g_view, sizeof g_cnt);
+    gx_texture_cache_clear();
+}
 
 void vram_cnt_write(uint32_t addr, uint8_t value)
 {

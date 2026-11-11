@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+extern "C" __attribute__((weak)) void sm64ds_log_flush(void);   /* vita_main.cpp */
 
 extern "C" void sm64ds_hostlog(const char *what, uint32_t a, uint32_t b);  /* irq_host.cpp */
 namespace ntr {
@@ -155,12 +156,14 @@ void func_02058568(void *ctx, uint32_t pc, uint32_t sp)
     if (!ht) {
         if (g_nthreads == MAX_THREADS) {
             fprintf(stderr, "FATAL: more than %d DS threads\n", MAX_THREADS);
+            if (sm64ds_log_flush) sm64ds_log_flush();
             abort();
         }
         ht = &g_threads[g_nthreads++];
         ht->ctx = ctx;
     } else if (ht->started) {
         fprintf(stderr, "FATAL: OS_InitContext on a running thread\n");
+        if (sm64ds_log_flush) sm64ds_log_flush();
         abort();
     }
     ht->entry = pc;
@@ -204,6 +207,7 @@ void ARMRestoreContext(void *next)
         pthread_attr_setstacksize(&attr, THREAD_STACK);
         if (pthread_create(&ht->th, &attr, thread_main, ht) != 0) {
             fprintf(stderr, "FATAL: cannot create a host thread for a DS thread\n");
+            if (sm64ds_log_flush) sm64ds_log_flush();
             abort();
         }
         pthread_attr_destroy(&attr);

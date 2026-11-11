@@ -1,9 +1,11 @@
 // Startup fill of the game's ROM-resident globals. See romimage_rt.h.
 #include "romimage_rt.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "romfs.h"
 
@@ -63,12 +65,34 @@ char g_rom_path[256];
 // the patches of that module's fills only.
 int *g_patch_fill;
 
+/* The fill holding host address `at`. Asked once for each of ~13,000
+   patches and the retargets: a scan of all ~13,000 fills each time was 170
+   million comparisons, four seconds of the boot. The fills sorted by
+   address once, then a binary search (the first fill holding it, as the
+   scan found). */
+unsigned *g_by_dst;
 int fill_of(const unsigned char *at)
 {
-    for (unsigned i = 0; i < rim_fill_count; ++i)
-        if (at >= rim_fills[i].dst && at < rim_fills[i].dst + rim_fills[i].size)
-            return (int)i;
-    return -1;
+    if (!g_by_dst) {
+        g_by_dst = (unsigned *)malloc(sizeof(unsigned) * (rim_fill_count ? rim_fill_count : 1));
+        for (unsigned i = 0; i < rim_fill_count; ++i) g_by_dst[i] = i;
+        std::stable_sort(g_by_dst, g_by_dst + rim_fill_count,
+                         [](unsigned a, unsigned b) { return rim_fills[a].dst < rim_fills[b].dst; });
+    }
+    // the last fill starting at or before `at`, then back over any that
+    // start earlier and still reach it (fills do not overlap in practice)
+    unsigned lo = 0, hi = rim_fill_count;
+    while (lo < hi) {
+        const unsigned mid = (lo + hi) / 2;
+        if (rim_fills[g_by_dst[mid]].dst <= at) lo = mid + 1;
+        else hi = mid;
+    }
+    int best = -1;
+    for (unsigned k = lo; k-- > 0 && lo - k <= 64;) {
+        const RimFill &f = rim_fills[g_by_dst[k]];
+        if (at >= f.dst && at < f.dst + f.size && (best < 0 || g_by_dst[k] < (unsigned)best)) best = (int)g_by_dst[k];
+    }
+    return best;
 }
 }  // namespace
 
@@ -117,6 +141,64 @@ void retarget(int module)
 }
 }  // namespace
 
+namespace {
+/* Overlay `module` has just been loaded at [base, base + len): every other
+   overlay's storage for DS addresses in that range now holds this one's
+   bytes, as the shared memory does on the DS. Overlays that load at the same
+   place (the levels, at 0x0211xxxx) each have their own storage here, and
+   code compiled against one of them -- the decomp names the address after
+   the overlay it matched against -- reads that one: Big Goomboss's material
+   animation is data_ov010_021123f4, whichever level is loaded, and in his
+   own arena (another overlay) it read level 10's storage, never filled, and
+   crashed. The copies carry this overlay's patched pointers, so they point
+   into its storage. Only storage the DS range is covered by both is copied;
+   the other overlay refills its own when it loads. */
+struct Span { uint32_t ds; uint32_t size; unsigned char *dst; };
+void mirror(int module, uint32_t base, uint32_t len)
+{
+    static Span *spans;
+    static unsigned cap;
+    unsigned n = 0;
+    for (unsigned i = 0; i < rim_fill_count; ++i) {
+        const RimFill &f = rim_fills[i];
+        if (f.module != module) continue;
+        if (n == cap) {
+            cap = cap ? cap * 2 : 256;
+            spans = (Span *)realloc(spans, cap * sizeof(Span));
+        }
+        spans[n++] = {f.ds_addr, f.size, f.dst};
+    }
+    if (!n) return;
+    std::sort(spans, spans + n, [](const Span &a, const Span &b) { return a.ds < b.ds; });
+    const uint32_t end = base + len;
+    unsigned copies = 0, bytes = 0;
+    for (unsigned i = 0; i < rim_fill_count; ++i) {
+        const RimFill &f = rim_fills[i];
+        if (f.module < 0 || f.module == module) continue;
+        if (f.ds_addr >= end || f.ds_addr + f.size <= base) continue;
+        // this overlay's spans that overlap f: from the last one starting at
+        // or before f's start
+        unsigned lo = 0, hi = n;
+        while (lo < hi) {
+            const unsigned mid = (lo + hi) / 2;
+            if (spans[mid].ds <= f.ds_addr) lo = mid + 1;
+            else hi = mid;
+        }
+        for (unsigned k = lo ? lo - 1 : 0; k < n && spans[k].ds < f.ds_addr + f.size; ++k) {
+            const uint32_t a = spans[k].ds > f.ds_addr ? spans[k].ds : f.ds_addr;
+            const uint32_t b0 = spans[k].ds + spans[k].size, b1 = f.ds_addr + f.size;
+            const uint32_t b = b0 < b1 ? b0 : b1;
+            if (a >= b) continue;
+            memcpy(f.dst + (a - f.ds_addr), spans[k].dst + (a - spans[k].ds), b - a);
+            ++copies;
+            bytes += b - a;
+        }
+    }
+    if (copies) printf("romimage: overlay %d mirrored into the overlays sharing its place (%u copies, %u KB)\n",
+                       module, copies, bytes / 1024);
+}
+}  // namespace
+
 extern "C" void sm64ds_romimage_run_inits(int module)
 {
     for (unsigned i = 0; i < rim_init_count; ++i) {
@@ -126,7 +208,30 @@ extern "C" void sm64ds_romimage_run_inits(int module)
     }
 }
 
+/* Module loads (overlays, the ARM9), for the log's slow-frame lines. */
+static unsigned g_mod_loads;
+static unsigned long long g_mod_us;
+static unsigned long long mod_now_us()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000000u + (unsigned long long)ts.tv_nsec / 1000u;
+}
+extern "C" void sm64ds_romimage_stats(unsigned *loads, unsigned long long *us)
+{
+    *loads = g_mod_loads;
+    *us = g_mod_us;
+}
+static bool load_module_timed(int module);
 extern "C" bool sm64ds_romimage_load_module(int module)
+{
+    const unsigned long long t0 = mod_now_us();
+    const bool ok = load_module_timed(module);
+    ++g_mod_loads;
+    g_mod_us += mod_now_us() - t0;
+    return ok;
+}
+static bool load_module_timed(int module)
 {
     Image img;
     if (module == -1) img.bytes = romfs::read_arm9(g_rom_path, &img.base, &img.len);
@@ -150,6 +255,7 @@ extern "C" bool sm64ds_romimage_load_module(int module)
     }
     for (unsigned i = 0; i < rim_bss_count; ++i)
         if (rim_bss[i].module == module) memset(rim_bss[i].dst, 0, rim_bss[i].size);
+    if (module >= 0) mirror(module, img.base, img.len);
     free(img.bytes);
     retarget(module);
     sm64ds_romimage_run_inits(module);
@@ -209,3 +315,17 @@ extern "C" bool sm64ds_romimage_load(const char *rom_path) {
 
 /* The ROM this run reads from (the card stand-in, port/vita/card_host.cpp) */
 extern "C" const char *sm64ds_rom_path(void) { return g_rom_path; }
+
+/* Which overlays loaded in what order (the retargeting's view), for save
+   states: restored with the game's memory it describes. */
+extern "C" unsigned sm64ds_romimage_state_size(void) { return sizeof g_load_seq + sizeof g_seq; }
+extern "C" void sm64ds_romimage_state_save(void *out)
+{
+    memcpy(out, g_load_seq, sizeof g_load_seq);
+    memcpy((char *)out + sizeof g_load_seq, &g_seq, sizeof g_seq);
+}
+extern "C" void sm64ds_romimage_state_load(const void *in)
+{
+    memcpy(g_load_seq, in, sizeof g_load_seq);
+    memcpy(&g_seq, (const char *)in + sizeof g_load_seq, sizeof g_seq);
+}

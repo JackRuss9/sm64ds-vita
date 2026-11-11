@@ -29,6 +29,7 @@
 // by an independent Python decoder).
 #include "ntr/mmio.h"
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -237,7 +238,15 @@ void *_ZN13SharedFilePtr4LoadEv(struct SharedFilePtrC *self)
     // or decompresses it out, exactly as the DS's SharedFilePtr::Load does.
     if (self->fileID >= 0x8000) {
         extern int func_0201818c(unsigned int id, int flush);
+        extern unsigned long long sm64ds_fs_archived_us;
+        extern unsigned sm64ds_fs_archived_n;
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
         self->filePtr = (void *)(uintptr_t)func_0201818c(self->fileID, 0);
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        ++sm64ds_fs_archived_n;     // the log's slow-frame lines (tests/smoke_boot.cpp)
+        sm64ds_fs_archived_us += (unsigned long long)(t1.tv_sec - t0.tv_sec) * 1000000u
+                                 + (t1.tv_nsec - t0.tv_nsec) / 1000;
         if (!self->filePtr)
             fprintf(stderr, "fs: archived file 0x%04x did not load\n", self->fileID);
         static unsigned logged;
@@ -334,3 +343,8 @@ void *SharedFilePtr::Load()
     return _ZN13SharedFilePtr4LoadEv((struct SharedFilePtrC *)this);
 }
 #endif
+
+/* Files taken out of the mounted archives (decompressed by the game's code),
+   for the log's slow-frame lines. */
+unsigned long long sm64ds_fs_archived_us;
+unsigned sm64ds_fs_archived_n;

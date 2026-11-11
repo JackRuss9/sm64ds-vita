@@ -17,6 +17,7 @@
 #ifndef NTR_MMIO_H
 #define NTR_MMIO_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 namespace ntr {
@@ -73,6 +74,9 @@ template <class T> inline T *host_ptr_t(uintptr_t addr) {
 // engine's texture-image / texture-palette offsets live under the current
 // mapping (0 if no bank; *avail = bytes left in that bank).
 void vram_cnt_write(uint32_t addr, uint8_t value);
+size_t vram_state_size();                 // the banks' mapping, for save states
+void vram_state_save(uint8_t *out);
+void vram_state_load(const uint8_t *in);
 uint32_t vram_tex_addr(uint32_t off, uint32_t *avail);
 uint32_t vram_pltt_addr(uint32_t off, uint32_t *avail);
 void vram_restore_state();          // mapping from VRAMCNT as it stands, no copies

@@ -9,6 +9,7 @@
 
 #include "ntr/texture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -73,6 +74,7 @@ struct State {
     float s0 = 0, t0 = 0;               // the last TEXCOORD as sent, in texels
     int texmode = 0;                    // TEXIMAGE_PARAM bits 30-31: how coordinates are made
     uint8_t tex_wrap = 3;               // TEXIMAGE_PARAM bits 16-19 of the bound texture
+    bool tex_translucent = false;       // the bound texture is A3I5 or A5I3
     const uint32_t *tex_rgba = nullptr; // bound texture (Mat tex above is the
     int tw = 0, th = 0;                 // texture *matrix* -- different thing)
     int prim = -1;                 // BEGIN_VTXS type, -1 when not inside a primitive
@@ -199,6 +201,9 @@ void emit_clipped(const GxVertex &a, const GxVertex &b, const GxVertex &c) {
     t.faces = static_cast<uint8_t>((g.attr >> 6) & 3);
     t.alpha = static_cast<uint8_t>((g.attr >> 16) & 31);
     t.attr = g.attr;
+    // the DS's translucent polygons: alpha under 31, or a translucent
+    // texture format (A3I5, A5I3) -- GBATEK, "Translucent Polygons"
+    t.translucent = t.alpha < 31 || (g.tex_rgba && g.tex_translucent);
     // The DS's polygon RAM holds 2048 per frame; anything past twice that is a
     // frame that never swapped, not a scene.
     if (g.tris.size() < 4096) g.tris.push_back(t);
@@ -515,6 +520,12 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
             ++g_stats.swaps;
             drop_old_retired();
             g_stats.last_shown = static_cast<uint32_t>(g.tris.size());
+            // The DS draws a frame's opaque polygons first and its
+            // translucent ones after, whatever order they were sent in: the
+            // poison mist lying on Big Goomboss's ground was sent before the
+            // ground, and drawn first the ground covered it.
+            std::stable_partition(g.tris.begin(), g.tris.end(),
+                                  [](const GxTriangle &t) { return !t.translucent; });
             g.shown.swap(g.tris);
             g.tris.clear();
             g.swapped = true;
@@ -613,6 +624,7 @@ void gx_enable_lights(uint32_t mask) { g.light_mask = mask & 0xF; }
 
 void gx_bind_texture(const uint32_t *rgba, int width, int height) {
     g.tex_wrap = 3;     // harness textures repeat; the VRAM path sets its own below
+    g.tex_translucent = false;
     g.tex_rgba = rgba;
     g.tw = width;
     g.th = height;
@@ -637,6 +649,7 @@ uint32_t g_teximage, g_plttbase;
 // points at. Cleared entries wait in g_retired until a few swaps have passed
 // (the triangle lists of those frames point at them too).
 using TexData = std::shared_ptr<const std::vector<uint32_t>>;
+void (*g_tex_free_hook)(const uint32_t *texels);
 std::map<uint64_t, TexData> g_vram_tex_cache;
 std::vector<std::pair<uint32_t, TexData>> g_retired;     // (swap count when retired, texels)
 size_t g_tex_cache_bytes;                                 // decoded texels the cache holds
@@ -717,11 +730,20 @@ void bind_from_vram() {
             retire_all();
             g_tex_cache_bytes = rgba.size() * 4;
         }
-        it = g_vram_tex_cache.emplace(key, std::make_shared<const std::vector<uint32_t>>(std::move(rgba))).first;
+        // the deleter tells the GPU view (gx_set_texture_free_hook) that
+        // these texels are gone: the next texture decoded can land at the
+        // same address, and a GPU copy kept by address would show the old
+        // picture -- Yoshi's eyes on the castle doors.
+        auto *v = new std::vector<uint32_t>(std::move(rgba));
+        it = g_vram_tex_cache.emplace(key, TexData(v, [](const std::vector<uint32_t> *p) {
+            if (g_tex_free_hook) g_tex_free_hook(p->data());
+            delete p;
+        })).first;
     }
     const int w = 8 << ((g_teximage >> 20) & 7), h = 8 << ((g_teximage >> 23) & 7);
     gx_bind_texture(it->second->data(), w, h);
     g.tex_wrap = static_cast<uint8_t>((g_teximage >> 16) & 0xF);
+    g.tex_translucent = fmt == 1 || fmt == 6;
 }
 
 }  // namespace
@@ -733,6 +755,7 @@ void gx_teximage_param(uint32_t v) {
 }
 // The decoded-texture cache is keyed by slot offsets: a bank remap makes it stale.
 void gx_texture_cache_clear() { retire_all(); }
+void gx_set_texture_free_hook(void (*hook)(const uint32_t *texels)) { g_tex_free_hook = hook; }
 void gx_pltt_base(uint32_t v) { g_plttbase = v; bind_from_vram(); }
 
 // Diagnostic: a running hash of every word entering the engine, so a smoke

@@ -660,7 +660,7 @@ set_source_files_properties("${G11_TEST}" PROPERTIES
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/arm7_host.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/card_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/input_host.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/model_trace_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/vita_display.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/snd_host.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/snd_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/savestate_host.cpp"
     PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/vita_log.h")
 enable_language(ASM)
 add_executable(gate11 "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${G11_TEST}" "${G10_GEN}"
@@ -668,6 +668,7 @@ add_executable(gate11 "${CMAKE_CURRENT_SOURCE_DIR}/vita_main.cpp" "${G11_TEST}" 
     "${CMAKE_CURRENT_SOURCE_DIR}/card_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/vita_display.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/input_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/heap_bridge_host.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/model_trace_host.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/snd_host.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/savestate_host.cpp"
     $<TARGET_OBJECTS:gate10_game>)
 add_dependencies(gate11 romimage_gen)
 target_include_directories(gate11 PRIVATE "${PORT_DIR}" "${REPO_DIR}/include"
@@ -684,6 +685,19 @@ foreach(lib SceDisplay_stub SceCtrl_stub SceTouch_stub ScePower_stub SceAudio_st
         target_link_libraries(gate11 PRIVATE ${lib})
     endif()
 endforeach()
+# Save states (port/vita/savestate_host.cpp) hold the game's own globals and
+# none of the port's. Which addresses those are comes from the link map:
+# port/tools/state_ranges.py reads gate11.map after the link and writes every
+# data/bss input section of the game's objects (all of gate10_game but the
+# port's files there, and the ROM-image storage) as ranges, relative to one
+# game global, into state_ranges.bin, which the VPK carries. The game's
+# memory layout stays exactly what the link gives it -- a linker script that
+# regrouped it once changed the game's behaviour (the castle's particles).
+target_link_options(gate11 PRIVATE "-Wl,-Map=${CMAKE_BINARY_DIR}/gate11.map")
+add_custom_command(TARGET gate11 POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} "${PORT_DIR}/tools/state_ranges.py"
+        "${CMAKE_BINARY_DIR}/gate11.map" "${CMAKE_BINARY_DIR}/state_ranges.bin"
+    COMMENT "save-state ranges from the link map")
 target_link_options(gate11 PRIVATE "-Wl,${G10_LD}" "-Wl,-T,${G10_INIT_LD}"
     -Wl,--wrap=FS_LoadOverlay -Wl,--wrap=func_02018c00
     -Wl,--wrap=func_02018b64 -Wl,--wrap=FS_StartOverlay
@@ -767,6 +781,7 @@ if(EXISTS "${SM64DS_LIVEAREA_DIR}/bg.png" AND EXISTS "${SM64DS_LIVEAREA_DIR}/sta
     message(STATUS "sm64ds-vita.vpk: LiveArea background from livearea/bg.png")
 endif()
 vita_create_vpk(sm64ds-vita.vpk SMDS00016 gate11.self VERSION 01.00 NAME "Super Mario 64 DS"
+    FILE "${CMAKE_BINARY_DIR}/state_ranges.bin" state_ranges.bin
     ${SM64DS_VPK_FILES})
 
 # Offline redraw of a gate-11 display snapshot (port/tools/snapshot_render.cpp):

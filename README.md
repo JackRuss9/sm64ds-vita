@@ -38,6 +38,7 @@ Files the game uses, all in `ux0:data/sm64ds/`:
 |---|---|
 | `sm64ds.nds` | Your ROM (you provide it) |
 | `settings.txt` | The Settings and Cheats menu choices |
+| `state.bin` | Your save state (D-pad UP + R) |
 | `gate11.log`, `results.txt` | The run's log, for bug reports |
 | `boot_*.bmp`, `snapshot_*.bin` | Screen captures (see *Reporting graphics bugs*) |
 | `sm64ds.sav` | Your save game (the cartridge's save memory) |
@@ -56,6 +57,8 @@ Files the game uses, all in `ux0:data/sm64ds/`:
 | Front touch screen | DS touch screen (where the bottom screen is shown) |
 | Right stick (left/right) | Turns the camera (can be switched off in Settings) |
 | Rear touch panel | Screen capture (when switched on in Settings) |
+| D-pad UP + R | **Save state** |
+| D-pad DOWN + L | **Load state** |
 
 ## Settings menu: D-pad RIGHT + SQUARE
 
@@ -66,7 +69,7 @@ paused while a menu is open.
 | Option | Choices |
 |---|---|
 | **Screen layout** | Side by side · Big top screen · Big touch screen · Top screen only · **Widescreen 16:9** (true widescreen: the 3D view is wider, not stretched, and the touch screen is a small inset) |
-| **3D resolution** | 1× (DS) to 4× |
+| **3D resolution** | **Screen size** (drawn at exactly the size it's shown: the sharpest) · 1× (DS) to 4× |
 | **Frame rate** | Show or hide the frame counter. It also shows the game speed when that isn't 100%. |
 | **Rear tap captures** | A tap on the rear panel saves the screens plus a recording of the last 1–2 seconds of 3D. While this is on, the port also captures automatically if a model suddenly changes size (glitch watch). |
 | **Game speed** | 100 · 50 · 25 · 10 · 5 %. Slows the game down, useful to look at a glitch. |
@@ -84,6 +87,16 @@ Layout and resolution only apply to the GPU renderer.
 | **Infinite breath underwater** | The power meter doesn't drain underwater |
 | **99 coins** | The coin counter starts at 99: the next coin is the 100th and brings the course's 100-coin star |
 
+## Save states
+
+**D-pad UP + R** saves the game's exact state and **D-pad DOWN + L** loads it
+back. These are separate from the game's own save. There is one slot,
+`ux0:data/sm64ds/state.bin`, and a message at the top of the screen confirms
+each save or load. Save states work while you're playing, not during loading
+screens. Saving and loading take about a second. A state belongs to the build
+that made it: after updating the port, save a new one, because older states
+are refused.
+
 ## How far it goes
 
 This is an early, playable build. Tested on hardware so far:
@@ -92,21 +105,23 @@ This is an early, playable build. Tested on hardware so far:
 - **Bob-omb Battlefield**, including King Bob-omb and his star;
 - **Whomp's Fortress**;
 - **Cool, Cool Mountain** (entering and playing);
+- **freeing Mario** from his room, and switching characters at the doors;
 - playing as Yoshi, Mario, Luigi and Wario;
+- save states;
+- Widescreen 16:9 and the Vita's native resolution;
 - sound and music, which sound like the DS.
 
-It runs at about 30 fps (the DS game's own rate) at 4× resolution.
+It runs at the DS game's own 30 fps at up to 4× resolution, and loads
+almost instantly.
 
 Later courses, the boss levels, the minigames and the multiplayer mode have
 not been played through yet. Expect crashes there, and please report them.
 
 ### Known issues
 
-- Peach's crown has the wrong colours.
+- In the intro, Peach's crown lies flat instead of sitting on her head.
 - The drawing toy in the main menu shows garbage on the lower screen while it loads.
-- In Widescreen 16:9, objects at the far left and right can pop in late.
-  The game still decides what to draw for a 4:3 screen.
-- Loading a course takes a few seconds.
+- Choosing VS mode on the title screen returns to the title screen (it isn't supported yet).
 - The DS microphone and wireless play are not supported.
 
 ## Reporting bugs

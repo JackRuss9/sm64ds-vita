@@ -27,7 +27,10 @@ bool sm64ds_gl_init(void);
 /* The 3D picture of a frame at `scale` (1..4) times the DS's resolution,
    4/3 as wide when `wide`; read back into `fb` too when given (then at 1x,
    not wide). */
-void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer *fb, int scale, bool wide);
+/* scale 0: drawn at native_w x native_h, the size the screen has on the
+   display (1x when that is 0) */
+void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer *fb, int scale, bool wide,
+                         int native_w = 0, int native_h = 0);
 /* Both screens and the frame-rate line, then shown. */
 void sm64ds_gl_present(const GlScreens &s);
 }

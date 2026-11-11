@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -72,6 +73,32 @@ struct GlTex {
     bool partial;      // some texel with an alpha between 0 and full
 };
 std::unordered_map<const uint32_t *, GlTex> g_tex;
+
+/* Decoded texels freed (gx_set_texture_free_hook, any thread): their GPU
+   copies go before the next frame looks any texture up, since the decoder
+   may put another texture at the same address -- with the same size, the
+   old copy was taken for it (Yoshi's eyes on the doors, Yoshi's blank). */
+std::mutex g_freed_mutex;
+std::vector<const uint32_t *> g_freed;
+void on_texels_freed(const uint32_t *p)
+{
+    std::lock_guard<std::mutex> lock(g_freed_mutex);
+    g_freed.push_back(p);
+}
+void forget_freed_textures()
+{
+    std::vector<const uint32_t *> freed;
+    {
+        std::lock_guard<std::mutex> lock(g_freed_mutex);
+        freed.swap(g_freed);
+    }
+    for (const uint32_t *p : freed) {
+        auto it = g_tex.find(p);
+        if (it == g_tex.end()) continue;
+        glDeleteTextures(1, &it->second.id);
+        g_tex.erase(it);
+    }
+}
 
 const char *kVs3d =
     "void main(float4 a_pos, float2 a_uv, float4 a_col,\n"
@@ -247,9 +274,11 @@ struct Batch {
 
 /* The 3D picture's render target, 256 x 192 times `scale`, with a depth
    buffer; again when the scale changes. */
-void make_render_target(int scale, bool wide)
+void make_render_target(int scale, bool wide, int nw = 0, int nh = 0)
 {
-    if (g_rt_scale == scale && g_rt_wide == wide) return;
+    if (scale == 0 && (nw < 64 || nh < 48)) scale = 1;      // no size to match: the DS's
+    if (scale != 0) nw = nh = 0;
+    if (g_rt_scale == scale && g_rt_wide == wide && (scale || (g_rt_w == nw && g_rt_h == nh))) return;
     if (g_rt_fbo) {
         glDeleteFramebuffers(1, &g_rt_fbo);
         glDeleteRenderbuffers(1, &g_rt_depth);
@@ -257,8 +286,14 @@ void make_render_target(int scale, bool wide)
     }
     g_rt_scale = scale;
     g_rt_wide = wide;
-    g_rt_w = wide ? (W * 4 * scale + 2) / 3 : W * scale;
-    g_rt_h = H * scale;
+    if (scale == 0) {
+        // the screen's own size on the display (widescreen's is already wide)
+        g_rt_w = nw;
+        g_rt_h = nh;
+    } else {
+        g_rt_w = wide ? (W * 4 * scale + 2) / 3 : W * scale;
+        g_rt_h = H * scale;
+    }
     g_rt_tex = make_texture(g_rt_w, g_rt_h, GL_NEAREST);
     glGenFramebuffers(1, &g_rt_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, g_rt_fbo);
@@ -314,6 +349,7 @@ extern "C" bool sm64ds_gl_init(void)
     // writes then crawled (a log line a second, the watchdog fired while the
     // castle grounds loaded). The 3D needs little: a 256x192 target, the
     // decoded DS textures (a few MiB at most) and the vertex streams.
+    ntr::gx_set_texture_free_hook(on_texels_freed);
     if (vglInitWithCustomSizes(0, 960, 544, 16 * 1024 * 1024, 32 * 1024 * 1024, 0, 0, SCE_GXM_MULTISAMPLE_NONE))
         printf("  gpu: vitaGL lowered the display resolution\n");
     vglWaitVblankStart(GL_FALSE);
@@ -351,10 +387,12 @@ extern "C" bool sm64ds_gl_init(void)
 /* The 3D layer of `frame`, as gx_render_frame would draw it, at `scale`
    (1..4) times the DS's resolution; read back into `fb` too when given
    (at 1x only: the CPU then mixes it in). */
-extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer *fb, int scale, bool wide)
+extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer *fb, int scale, bool wide,
+                                    int native_w, int native_h)
 {
     if (fb) { scale = 1; wide = false; }
-    make_render_target(scale < 1 ? 1 : scale > 4 ? 4 : scale, wide);
+    forget_freed_textures();
+    make_render_target(scale < 0 ? 1 : scale > 4 ? 4 : scale, wide, native_w, native_h);
     // widescreen: the same projection, 3/4 as wide on the screen, so a 16:9
     // picture shows the DS's view in its middle and more of the scene beside
     // it (what the game draws there: it culls by its own 4:3 view, so things
