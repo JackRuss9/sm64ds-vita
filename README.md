@@ -120,8 +120,8 @@ not been played through yet. Expect crashes there, and please report them.
 
 ### Known issues
 
-- In the intro, Peach's crown lies flat instead of sitting on her head.
-- The drawing toy in the main menu shows garbage on the lower screen while it loads.
+- In Boo's Carousel and at the top of Whomp's tower, the camera can lose the player.
+- The drawing toy in the main menu shows garbage on the lower screen.
 - Choosing VS mode on the title screen returns to the title screen (it isn't supported yet).
 - The DS microphone and wireless play are not supported.
 

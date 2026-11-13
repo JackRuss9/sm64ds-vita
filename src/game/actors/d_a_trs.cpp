@@ -1295,7 +1295,19 @@ void daTrs_c::func_ov063_02117cdc() {
         int *d560;
         u8 *st;
         int v0;
+#if defined(SM64DS_PLATFORM_PC)
+        /* 0x02111b6c is ambiguous (13 overlays load there) and the source
+           names ov008's, but in Big Boo's mirror room the overlay at that
+           address is ov055: the mirror Luigi's fade (daLuigi_c), which
+           func_ov055_02111264 starts in step 4. On the DS one address holds
+           whichever overlay is loaded; here each has its own storage, so
+           ov008's value never reached 0x1f000 and the mirror scene waited
+           forever. */
+        extern int data_ov055_02111b6c;
+        if (data_ov055_02111b6c == 0x1f000 || (data_0209caa0[1] & 0x10)) {
+#else
         if ((&data_ov008_02111b6c)[0] == 0x1f000 || (data_0209caa0[1] & 0x10)) {
+#endif
             v0 = 1;
         } else {
             v0 = 0;

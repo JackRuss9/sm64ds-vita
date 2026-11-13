@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -197,6 +198,27 @@ void emit_tri(const GxVertex &a, const GxVertex &b, const GxVertex &c) {
 void emit_clipped(const GxVertex &a, const GxVertex &b, const GxVertex &c) {
     GxTriangle t;
     t.v[0] = a; t.v[1] = b; t.v[2] = c;
+    // Toon / highlight polygons (POLYGON_ATTR mode 2, GBATEK "Toon/Highlight
+    // Shading"): the vertex colour's red (5 bits) picks an entry of the toon
+    // table (0x4000380). Toon (DISP3DCNT bit 1 clear): the entry replaces the
+    // colour and the texture modulates it. Highlight: the entry is added to
+    // the colour. The game draws a character changing hats this way, with a
+    // rainbow toon table; drawn as plain modulation it came out white.
+    // Looked up per vertex (the DS does it per pixel).
+    if (((g.attr >> 4) & 3) == 2) {
+        const bool highlight = (io_read(0x04000060u, 2) & 2) != 0;
+        for (GxVertex &v : t.v) {
+            const unsigned r5 = (v.color >> 19) & 31;
+            const unsigned e = static_cast<unsigned>(io_read(0x04000380u + 2 * r5, 2));
+            unsigned tr = (e & 31) * 255 / 31, tg = ((e >> 5) & 31) * 255 / 31, tb = ((e >> 10) & 31) * 255 / 31;
+            if (highlight) {
+                tr = std::min(255u, tr + ((v.color >> 16) & 255));
+                tg = std::min(255u, tg + ((v.color >> 8) & 255));
+                tb = std::min(255u, tb + (v.color & 255));
+            }
+            v.color = (v.color & 0xFF000000u) | (tr << 16) | (tg << 8) | tb;
+        }
+    }
     t.tex = g.tex_rgba; t.tw = g.tw; t.th = g.th; t.wrap = g.tex_wrap;
     t.faces = static_cast<uint8_t>((g.attr >> 6) & 3);
     t.alpha = static_cast<uint8_t>((g.attr >> 16) & 31);

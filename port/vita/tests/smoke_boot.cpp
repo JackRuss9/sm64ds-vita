@@ -421,6 +421,7 @@ extern "C" void sm64ds_model_trace_frame(bool arm);   /* model_trace_host.cpp */
 extern "C" const char *sm64ds_glitch_capture_requested(void);   /* model_trace_host.cpp */
 extern "C" bool sm64ds_rear_capture_enabled(void);             /* vita_display.cpp */
 extern "C" void sm64ds_savestate_frame(void);                  /* savestate_host.cpp */
+extern "C" void sm64ds_camera_ring_dump(void);                 /* savestate_host.cpp */
 
 /* The rolling 3D record (gx_ring_enable): 12 MB, about one and a half to two
    seconds of play at full speed (much more when slowed down), always kept
@@ -531,6 +532,7 @@ static bool hook(uint64_t frame)
         g_host_phase = "saving the screenshots";
         capture(frame);
         printf("  capture at frame %u (%s)\n", (unsigned)frame, auto_why ? auto_why : "rear panel");
+        if (!auto_why) sm64ds_camera_ring_dump();
         fflush(stdout);
         if (!ntr::gx_ring_active()) ntr::gx_record_start(1u << 20);
         g_capture_at = frame + 3;

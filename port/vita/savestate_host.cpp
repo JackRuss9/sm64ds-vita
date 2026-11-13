@@ -450,8 +450,10 @@ void sm64ds_camera_mode_log(const void *mode, int dist, int min_slope, int max_s
     printf("\n");
 }
 
+static void camera_ring_height(int ground, int wanted, int floor_, int ceiling, int probe_y);
 void sm64ds_camera_height_log(const void *cam, int ground, int wanted, int floor_, int ceiling, int probe_y)
 {
+    camera_ring_height(ground, wanted, floor_, ceiling, probe_y);
     static int left = 600;
     static int32_t last_pos_y, last_target_y;
     const int32_t *v = (const int32_t *)cam;
@@ -485,6 +487,118 @@ void sm64ds_camera_height_log(const void *cam, int ground, int wanted, int floor
     }
 }
 
+/* The camera's last 2 seconds, dumped to the log on a rear-panel tap
+   (sm64ds_camera_ring_dump, from smoke_boot.cpp's capture). The other
+   camera logs stop after a fixed count, and the Boo's Carousel glitch came
+   after they had all run out; this one costs nothing until a tap. Each
+   frame: the camera's position, what it looks at and aims for, its mode,
+   area mode and state, flags and angles, the active player's position,
+   and, when the follow camera ran, its height limits and probes. */
+namespace {
+struct CamRec {
+    uint32_t frame;
+    int32_t pos[3], look[3], target[3], player[3];
+    int16_t mode, area;
+    const void *state, *view, *fixed;
+    uint32_t flags;
+    int16_t ax, ay, base;
+    bool height;                 // the follow camera's limits below are this frame's
+    int32_t ground, wanted, floor_, ceiling, probe_y;
+    int8_t hit[3];
+    int32_t hit_y[3];
+    uint16_t hit_tri[3], hit_owner[3];
+};
+CamRec g_cam_ring[120];
+unsigned g_cam_ring_n;
+CamRec g_cam_cur;
+}
+
+static void camera_ring_frame(void)
+{
+    const char *c = (const char *)data_0209f318;
+    if (data_0209d50c != 7 || !c || !sm64ds_in_game_arena(c)) {
+        g_cam_cur.height = false;
+        return;
+    }
+    CamRec &r = g_cam_cur;
+    r.frame = (uint32_t)ntr::rt_frame();
+    memcpy(r.pos, c + 0x8c, 12);
+    memcpy(r.look, c + 0x80, 12);
+    memcpy(r.target, c + 0x98, 12);
+    const auto mode = [](const void *m) {
+        return (int16_t)(m ? ((const char *)m - (const char *)&data_02086fcc) / 0x28 : -1);
+    };
+    r.mode = mode(*(void *const *)(c + 0x13c));
+    r.area = mode(*(void *const *)(c + 0x140));
+    r.state = *(void *const *)(c + 0x138);
+    r.view = *(void *const *)(c + 0x144);
+    r.fixed = *(void *const *)(c + 0x148);
+    r.flags = *(const uint32_t *)(c + 0x154);
+    r.ax = *(const int16_t *)(c + 0x17e);
+    r.ay = *(const int16_t *)(c + 0x17c);
+    r.base = *(const int16_t *)(c + 0x182);
+    const char *p = gActivePlayerSlot < 4 ? (const char *)data_0209f394[gActivePlayerSlot] : nullptr;
+    if (p && sm64ds_in_game_arena(p)) memcpy(r.player, p + 0x5c, 12);
+    else memset(r.player, 0, 12);
+    g_cam_ring[g_cam_ring_n++ % 120] = r;
+    r.height = false;
+}
+
+static void camera_ring_height(int ground, int wanted, int floor_, int ceiling, int probe_y)
+{
+    CamRec &r = g_cam_cur;
+    r.height = true;
+    r.ground = ground;
+    r.wanted = wanted;
+    r.floor_ = floor_;
+    r.ceiling = ceiling;
+    r.probe_y = probe_y;
+    for (int i = 0; i < 3; ++i) {
+        const CamProbe &p = g_probe[i];
+        r.hit[i] = (int8_t)(p.hit != 0);
+        r.hit_y[i] = p.clsn[1];
+        r.hit_tri[i] = (uint16_t)p.tri;
+        r.hit_owner[i] = (uint16_t)p.owner_id;
+    }
+}
+
+extern "C" void sm64ds_camera_ring_dump(void)
+{
+    const unsigned n = g_cam_ring_n < 120 ? g_cam_ring_n : 120;
+    printf("  [camera trace] the last %u frames (pos / look / target / player in units; modes index the table at 02086fcc)\n", n);
+    for (unsigned i = g_cam_ring_n - n; i != g_cam_ring_n; ++i) {
+        const CamRec &r = g_cam_ring[i % 120];
+        printf("   %u: pos %d %d %d look %d %d %d target %d %d %d player %d %d %d mode %d area %d state %p view %p"
+               " fixed %p flags %x angles %d %d base %d",
+               r.frame, r.pos[0] >> 12, r.pos[1] >> 12, r.pos[2] >> 12, r.look[0] >> 12, r.look[1] >> 12,
+               r.look[2] >> 12, r.target[0] >> 12, r.target[1] >> 12, r.target[2] >> 12, r.player[0] >> 12,
+               r.player[1] >> 12, r.player[2] >> 12, r.mode, r.area, r.state, r.view, r.fixed, (unsigned)r.flags,
+               r.ax, r.ay, r.base);
+        if (r.height)
+            printf("; follow: ground %d wants %d floor %d ceiling %d probe %d; up %s%d/%u/%04x mid %s%d/%u/%04x gnd %s%d/%u/%04x",
+                   r.ground >> 12, r.wanted >> 12, r.floor_ >> 12, r.ceiling >> 12, r.probe_y >> 12,
+                   r.hit[0] ? "HIT " : "miss ", r.hit_y[0] >> 12, r.hit_tri[0], r.hit_owner[0],
+                   r.hit[1] ? "HIT " : "miss ", r.hit_y[1] >> 12, r.hit_tri[1], r.hit_owner[1],
+                   r.hit[2] ? "HIT " : "miss ", r.hit_y[2] >> 12, r.hit_tri[2], r.hit_owner[2]);
+        printf("\n");
+    }
+    // the camera object now, raw, and its mode records
+    const char *c = (const char *)data_0209f318;
+    if (c && sm64ds_in_game_arena(c)) {
+        printf("  [camera trace] camera %p:", (const void *)c);
+        for (int i = 0; i < 0x1c0 / 4; ++i) printf("%s%08x", i % 8 ? " " : "\n    +", (unsigned)((const uint32_t *)c)[i]);
+        printf("\n");
+        for (int k = 0; k < 2; ++k) {
+            const uint32_t *m = *(const uint32_t *const *)(c + (k ? 0x140 : 0x13c));
+            if (!m) continue;
+            printf("  [camera trace] %s record:", k ? "area mode" : "mode");
+            for (int i = 0; i < 10; ++i) printf(" %08x", (unsigned)m[i]);
+            printf("\n");
+        }
+    }
+    fflush(stdout);
+}
+
 extern void (*sm64ds_camera_probe_hook)(int, const void *, int, const void *, const void *);
 extern void (*sm64ds_camera_height_hook)(const void *, int, int, int, int, int);
 extern void (*sm64ds_camera_mode_hook)(const void *, int, int, int, int, int, int);
@@ -502,6 +616,7 @@ static struct CameraHooks {
 void sm64ds_savestate_frame(void)
 {
     camera_watch();
+    camera_ring_frame();
     const int r = g_request;
     if (!r) return;
     g_request = 0;
