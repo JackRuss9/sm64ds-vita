@@ -47,6 +47,7 @@ extern int data_020a0db0;           /* main-loop frame counter */
 uint32_t sm64ds_thread_entry(void *ctx);
 bool sm64ds_display_init(void);     /* port/vita/vita_display.cpp */
 void sm64ds_display_present(void);
+extern volatile int sm64ds_debug_log;   /* vita_display.cpp: the DEBUG LOG setting (Settings menu) */
 unsigned sm64ds_display_dropped(void);
 void sm64ds_display_tick(void);
 void sm64ds_thread_started(void);   /* port/vita/vita_display.cpp */
@@ -172,6 +173,10 @@ static void display_report(uint64_t frame)
         g_n_present = 0;
         t_last = t;
         f_last = frame;
+    }
+    if (!sm64ds_debug_log) {        // the rest is debugging detail (the DEBUG LOG setting)
+        fflush(stdout);
+        return;
     }
     uint32_t gs[6];
     ntr::gx_debug_stats(gs);
@@ -305,6 +310,7 @@ extern "C" void __wrap__ZN3OAM6RenderEbP7OamAttriiiiP9Matrix2x2(bool sub, void *
 }
 static void oam_report()
 {
+    if (!sm64ds_debug_log) return;
     printf("    OAM lists: %u resets, %u loads, %u+%u renders; single %u, counts main %d sub %d\n",
            g_oam_resets, g_oam_loads, g_oam_renders, g_oam_renders7, (unsigned)data_0209e660,
            data_0209e664, data_0209e670);
@@ -329,6 +335,7 @@ static void oam_report()
    Vita's input changes, and every two seconds. */
 static void input_trace(uint64_t frame)
 {
+    if (!sm64ds_debug_log) return;
     static uint32_t last_sig = ~0u;
     static unsigned lines;
     const uint16_t keys = *static_cast<volatile uint16_t *>(ntr::host_ptr(0x04000130));
@@ -496,7 +503,7 @@ static bool hook(uint64_t frame)
     input_trace(frame);
     const int step = data_0209d50c, count = data_020a0db0;
     if (count != g_last_count) ++g_loop_frames;
-    if (step != g_last_step || frame % 60 == 0 || frame < 5) {
+    if (frame < 5 || (sm64ds_debug_log && (step != g_last_step || frame % 60 == 0))) {
         printf("  frame %3u: main-loop step %d, loop frame %d\n", (unsigned)frame, step, count);
         fflush(stdout);
     }
@@ -513,8 +520,12 @@ static bool hook(uint64_t frame)
         if (t_prev > 0) g_ms_frame += t0 - t_prev;
         t_prev = t0;
         // the live view: every other frame (30 a second); slowed down,
-        // every frame, so none goes by unseen
-        if (frame % 2 == 0 || sm64ds_game_speed_pct() < 100) {
+        // every frame, so none goes by unseen. Every frame too while the game
+        // captures the display (DISPCAPCNT bit 31): the minigames with 3D on
+        // both screens draw one screen a frame, alternating, and capture it
+        // for the other; every other frame only ever saw one of the two.
+        if (frame % 2 == 0 || sm64ds_game_speed_pct() < 100 ||
+            (NTR_MMIO(uint32_t, 0x04000064) & 0x80000000u)) {
             sm64ds_display_present();
             g_ms_present += now_ms() - t0;
             ++g_n_present;

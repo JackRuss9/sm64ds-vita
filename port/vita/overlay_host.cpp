@@ -83,6 +83,24 @@ static void sinit_ov098_yajirusi(void)
     func_02017b4c(&gYajirusiRCollisionFile, 0x049a);
 }
 
+/* Globals the decomp's sources define for an overlay (not ROM-image
+   globals, which sm64ds_romimage_load_module zeroes): on the DS they sit in
+   the overlay's .bss and start at zero on every load. The trampoline
+   minigames' list of bouncing objects (ov006) is filled for as many objects
+   as a minigame has -- one Mario in the first, several in the second -- so
+   after the second, the first found freed objects in the rest of the list
+   and crashed starting. */
+extern void *sTrmpJumpers[5];
+extern int sTrmp2MarioPtrs[5];
+
+static void zero_source_bss(uint32_t id)
+{
+    if (id == 6) {
+        memset(sTrmpJumpers, 0, sizeof sTrmpJumpers);
+        memset(sTrmp2MarioPtrs, 0, sizeof sTrmp2MarioPtrs);
+    }
+}
+
 static void run_handwritten_sinits(uint32_t id)
 {
     static const struct { uint32_t id; void (*fn)(void); } kSinit[] = {
@@ -103,6 +121,7 @@ void __wrap_FS_StartOverlay(OverlayInfo *info)
     printf("overlay: start %u\n", id);
     if (!sm64ds_romimage_load_module((int)id))
         fprintf(stderr, "overlay: could not load overlay %u from the ROM\n", id);
+    zero_source_bss(id);
     run_handwritten_sinits(id);
 }
 

@@ -250,6 +250,7 @@ extern int data_02086fcc;               /* the camera's mode table, 0x28 a mode 
 /* The camera's mode, area mode and state, logged as they change while
    playing (the first 300 changes), with how far it sits from what it looks
    at: for "the camera got stuck in the tower wall" reports. */
+extern "C" volatile int sm64ds_debug_log;   /* vita_display.cpp: the DEBUG LOG setting */
 static void camera_modes(const char *c)
 {
     static int left = 300, frame;
@@ -292,6 +293,7 @@ static void camera_low(const char *c)
 }
 static void camera_watch(void)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     static int left = 300, frame;
     static int32_t prev[5][3];
     static bool have[5];
@@ -352,6 +354,7 @@ static void camera_watch(void)
 void sm64ds_rootmotion_log(int kind, int mode, const int *bone, const int *target, const int *before,
                            const int *after, int angle, const void *model, int file_base, int character)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     static int left = 200, frame;
     if (left <= 0) return;
     if (kind == 1) {
@@ -414,6 +417,7 @@ int g_cam_mode_vals[6];
 
 void sm64ds_camera_probe(int kind, const void *query, int hit, const void *from, const void *to)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     if (kind < 0 || kind > 2) return;
     CamProbe &p = g_probe[kind];
     const unsigned char *q = (const unsigned char *)query;
@@ -435,6 +439,7 @@ void sm64ds_camera_probe(int kind, const void *query, int hit, const void *from,
 
 void sm64ds_camera_mode_log(const void *mode, int dist, int min_slope, int max_slope, int r6, int sp04, int flags)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     g_cam_mode = mode;
     const int v[6] = {dist, min_slope, max_slope, r6, sp04, flags};
     memcpy(g_cam_mode_vals, v, sizeof v);
@@ -453,6 +458,7 @@ void sm64ds_camera_mode_log(const void *mode, int dist, int min_slope, int max_s
 static void camera_ring_height(int ground, int wanted, int floor_, int ceiling, int probe_y);
 void sm64ds_camera_height_log(const void *cam, int ground, int wanted, int floor_, int ceiling, int probe_y)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     camera_ring_height(ground, wanted, floor_, ceiling, probe_y);
     static int left = 600;
     static int32_t last_pos_y, last_target_y;
@@ -515,6 +521,7 @@ CamRec g_cam_cur;
 
 static void camera_ring_frame(void)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     const char *c = (const char *)data_0209f318;
     if (data_0209d50c != 7 || !c || !sm64ds_in_game_arena(c)) {
         g_cam_cur.height = false;
@@ -564,6 +571,7 @@ static void camera_ring_height(int ground, int wanted, int floor_, int ceiling, 
 
 extern "C" void sm64ds_camera_ring_dump(void)
 {
+    if (!sm64ds_debug_log) return;   /* debug logging off (Settings menu) */
     const unsigned n = g_cam_ring_n < 120 ? g_cam_ring_n : 120;
     printf("  [camera trace] the last %u frames (pos / look / target / player in units; modes index the table at 02086fcc)\n", n);
     for (unsigned i = g_cam_ring_n - n; i != g_cam_ring_n; ++i) {

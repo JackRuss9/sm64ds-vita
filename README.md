@@ -74,6 +74,7 @@ paused while a menu is open.
 | **Rear tap captures** | A tap on the rear panel saves the screens plus a recording of the last 1–2 seconds of 3D. While this is on, the port also captures automatically if a model suddenly changes size (glitch watch). |
 | **Game speed** | 100 · 50 · 25 · 10 · 5 %. Slows the game down, useful to look at a glitch. |
 | **Right stick camera** | On / off |
+| **Debug log** | Off (default) / on. On, `gate11.log` also gets the detailed traces used to hunt bugs (camera, sound, display registers, input). Turn it on when you report a bug. |
 
 Layout and resolution only apply to the GPU renderer.
 
@@ -82,7 +83,7 @@ Layout and resolution only apply to the GPU renderer.
 | Cheat | Effect |
 |---|---|
 | **Infinite lives** | The life counter never drops below 4 |
-| **Moon jump** | Hold jump (Circle) to keep rising |
+| **Moon jump** | Hold jump (Circle) in the air to keep rising; meanwhile the left stick steers quickly |
 | **Infinite power** | The power meter refills whenever it drops. Falling out of the level still costs a life. |
 | **Infinite breath underwater** | The power meter doesn't drain underwater |
 | **99 coins** | The coin counter starts at 99: the next coin is the 100th and brings the course's 100-coin star |
@@ -107,6 +108,7 @@ This is an early, playable build. Tested on hardware so far:
 - **Whomp's Fortress**;
 - **Cool, Cool Mountain** (entering and playing);
 - **freeing Mario** from his room, and switching characters at the doors;
+- the whole game, from start to the ending, with 80 stars;
 - playing as Yoshi, Mario, Luigi and Wario;
 - save states;
 - Widescreen 16:9 and the Vita's native resolution;
@@ -120,12 +122,14 @@ not been played through yet. Expect crashes there, and please report them.
 
 ### Known issues
 
-- In Boo's Carousel and at the top of Whomp's tower, the camera can lose the player.
-- The drawing toy in the main menu shows garbage on the lower screen.
+- Minigames with many objects on both screens (Bounce and Pounce, the trampoline games) can drop to 20-30 fps.
+- Some minigames show stripes for a moment while they open (the DS's per-line screen effects are not supported yet).
 - Choosing VS mode on the title screen returns to the title screen (it isn't supported yet).
 - The DS microphone and wireless play are not supported.
 
 ## Reporting bugs
+
+Turn on **Debug log** in the Settings menu first: the log then has the detail needed to find the cause.
 
 After a crash, VitaShell can show the crash dump in `ux0:data/` (a
 `psp2core-*.psp2dmp` file). Please attach these files to the issue:
@@ -138,7 +142,7 @@ After a crash, VitaShell can show the crash dump in `ux0:data/` (a
 
 Glitches that last a frame are hard to catch by eye:
 1. Turn on **Rear tap captures**.
-2. Tap the rear panel just *after* you see the glitch. The port keeps the last 1–2 seconds of 3D, so a late tap still holds it.
+2. Tap the rear panel just *after* you see the glitch. With **Debug log** on, each tap also writes the camera's last 2 seconds to the log. The port keeps the last 1–2 seconds of 3D, so a late tap still holds it.
 3. Send the `boot_*.bmp`, `snapshot_*.bin` and `gate11.log` files.
 
 Lowering **Game speed** helps too.

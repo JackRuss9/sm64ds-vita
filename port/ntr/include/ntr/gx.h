@@ -53,6 +53,8 @@ struct GxTriangle {
     uint8_t wrap = 3;
     // drawn after the opaque ones (alpha under 31, or an A3I5/A5I3 texture)
     bool translucent = false;
+    // the DS's drawing order key, set at SWAP_BUFFERS (gx.cpp)
+    uint32_t sort_key = 0;
 };
 
 // Feed the engine. `gx_write_port` takes a geometry-port address in

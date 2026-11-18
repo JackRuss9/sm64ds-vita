@@ -22272,6 +22272,9 @@ ret0:
 }
 }
 
+#if defined(SM64DS_PLATFORM_PC)
+extern "C" volatile int sm64ds_moon_jump_steer = 0;   /* set by the port's moon jump cheat */
+#endif
 // @symbol func_ov002_020e28d4
 extern "C" {
 void func_ov002_020e28d4(Player *p, int a, int b) {
@@ -22287,6 +22290,17 @@ void func_ov002_020e28d4(Player *p, int a, int b) {
 
     if (p->param1 == 1)
         a <<= 1;
+
+#if defined(SM64DS_PLATFORM_PC)
+    /* The port's moon jump cheat steers the player itself while it lifts
+       (sm64ds_moon_jump_apply below): the game's own air control is left
+       out then, so the two don't fight. */
+    {
+        extern volatile int sm64ds_moon_jump_steer;
+        if (sm64ds_moon_jump_steer)
+            return;
+    }
+#endif
 
     if (*(s16*)((char*)data_0209f4a0 + gActivePlayerSlot * 0x18) != 0) {
         if (p->mClsnFlags & 2) {
@@ -22335,6 +22349,44 @@ void func_ov002_020e28d4(Player *p, int a, int b) {
         p->mHorzSpeed -= 0x2000;
 }
 }
+
+#if defined(SM64DS_PLATFORM_PC)
+extern "C" {
+/* The moon jump cheat's steering, once a frame while it lifts (called by
+   port/vita/input_host.cpp before the game's frame). Momentum, as in Super
+   Mario Sunshine: the horizontal velocity (mHorzSpeed along mPrevAngleY)
+   eases a fifth of the way a frame towards where the stick points, at the
+   speed the stick asks for (none when let go). Pushing sideways curves the
+   path, pushing back slows down first and then goes back. The body turns
+   smoothly to face where it goes. It runs whatever the air state is: the
+   state the game is in while A is held up there (0118's log) never calls
+   the air control (func_ov002_020e28d4) the 0115 version hooked. */
+void sm64ds_moon_jump_apply(Player *p) {
+    extern int Player_ScaleByCharFactor(void *p, int a);
+    extern int func_ov002_020bf224(void *p, int a, int b);
+    extern void ApproachAngle(s16* cur, s16 target, int divisor, int band, int maxStep);
+    extern s16 data_0209f4a0[];
+    extern s16 data_02082214[];
+    const int stick = *(s16*)((char*)data_0209f4a0 + gActivePlayerSlot * 0x18);
+    int target = 0;
+    if (stick != 0)
+        target = func_ov002_020bf224(p, Player_ScaleByCharFactor(p, 0x21000), Player_ScaleByCharFactor(p, 0xa000));
+    const s16 *cur = &data_02082214[((u16)p->mPrevAngleY >> 4) * 2];
+    const s16 *want = &data_02082214[((u16)p->mDesiredAngleY >> 4) * 2];
+    long long vx = ((long long)p->mHorzSpeed * cur[0]) >> 12;
+    long long vz = ((long long)p->mHorzSpeed * cur[1]) >> 12;
+    const long long tx = ((long long)target * want[0]) >> 12;
+    const long long tz = ((long long)target * want[1]) >> 12;
+    vx += ((tx - vx) * 0x333) >> 12;
+    vz += ((tz - vz) * 0x333) >> 12;
+    const int speed = (int)__builtin_sqrtf((float)vx * (float)vx + (float)vz * (float)vz);
+    if (speed > 0x400)
+        p->mPrevAngleY = cstd::atan2((int)vx, (int)vz);
+    p->mHorzSpeed = speed;
+    ApproachAngle(&p->mAngleY, p->mPrevAngleY, 4, 0x1000, 0x100);
+}
+}
+#endif
 
 // @symbol func_ov002_020e2ad0
 extern "C" {

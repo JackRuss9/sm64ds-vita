@@ -286,9 +286,9 @@ void draw_objs(const Eng &e, uint32_t dispcnt, int y, ObjLine &o)
     const bool map1d = dispcnt & 0x10;
     const uint32_t boundary = 32u << ((dispcnt >> 20) & 3);
     const uint32_t *ext_obj = (dispcnt & 0x80000000u) ? ext_slot(e, true, 0) : nullptr;
-    // The lowest OAM index whose pixel is opaque wins the pixel (its priority
-    // then competes with the backgrounds); so draw in index order and keep the
-    // first. The OBJ window is separate: every window sprite adds to it.
+    // Of the opaque sprite pixels at a point, the best priority wins, then the
+    // lowest OAM index (that one then competes with the backgrounds); drawn
+    // in index order. The OBJ window is separate: every window sprite adds to it.
     for (int i = 0; i < 128; ++i) {
         const uint16_t a0 = rd16(oam + i * 8u), a1 = rd16(oam + i * 8u + 2), a2 = rd16(oam + i * 8u + 4);
         const bool affine = a0 & 0x100;
@@ -365,7 +365,13 @@ void draw_objs(const Eng &e, uint32_t dispcnt, int y, ObjLine &o)
                 o.win[px] = 1;
                 continue;
             }
-            if (o.on[px]) continue;
+            // The sprite pixel kept is the one with the best priority, and
+            // among equal ones the lowest OAM index (index order here: a
+            // later sprite takes the pixel only with a better priority).
+            // Keeping the lowest index whatever its priority hid the slot
+            // machine's BET button (prio 1, OAM 24) behind a reel frame's
+            // corner (prio 3, OAM 12), and so behind the BG over that.
+            if (o.on[px] && o.prio[px] <= prio) continue;
             o.on[px] = 1;
             o.c[px] = colour;
             o.prio[px] = static_cast<uint8_t>(prio);
@@ -509,7 +515,22 @@ void compose_lines(Engine eng, Framebuffer &fb, const Framebuffer *layer3d, int 
     const bool win0 = dispcnt & 0x2000, win1 = dispcnt & 0x4000, objwin = dispcnt & 0x8000;
     const bool any_win = win0 || win1 || objwin;
     const uint16_t winin = rd16(e.reg + 0x48), winout = rd16(e.reg + 0x4a);
-    const uint16_t w0h = rd16(e.reg + 0x40), w1h = rd16(e.reg + 0x42);
+    uint16_t w0h = rd16(e.reg + 0x40), w1h = rd16(e.reg + 0x42);
+    // Two windows meant to split the screen edge to edge: the minigame
+    // menu sets WIN0 to x 0-127 and WIN1 to 128-255 (0x007f, 0x80ff). With
+    // X2 exclusive, as GBATEK has it, columns 127 and 255 fall outside both
+    // and showed the backdrop: a white line down the middle of both screens
+    // (and the right edge), which the DS doesn't show. Where one window ends
+    // one short of where the other starts, or at 255, it is taken to reach.
+    if (win0 && win1) {
+        const unsigned a1 = w0h >> 8, a2 = w0h & 0xff, b1 = w1h >> 8, b2 = w1h & 0xff;
+        if (a1 < a2 && b1 < b2 && (a2 + 1 == b1 || b2 + 1 == a1)) {
+            if (a2 + 1 == b1) w0h = (uint16_t)(a1 << 8 | b1);
+            else w1h = (uint16_t)(b1 << 8 | a1);
+            if (a2 == 0xff) w0h = (uint16_t)(w0h & 0xff00);      // to the right edge (X2 0: 256)
+            if (b2 == 0xff) w1h = (uint16_t)(w1h & 0xff00);
+        }
+    }
     const uint16_t w0v = rd16(e.reg + 0x44), w1v = rd16(e.reg + 0x46);
     const uint16_t bldcnt = rd16(e.reg + 0x50), bldalpha = rd16(e.reg + 0x52);
     const unsigned bmode = (bldcnt >> 6) & 3;
@@ -611,9 +632,15 @@ void compose_lines(Engine eng, Framebuffer &fb, const Framebuffer *layer3d, int 
                 const bool first_ok = (bldcnt >> top) & 1;
                 if (top == L_BG0 && kind[0] == BG_3D) {
                     const unsigned a = ct >> 24;            // 1..31
-                    if (a < 31 && second_ok) out = blend32(ct & 0xffffffu, cs & 0xffffffu, a + 1);
-                    else if (fx && first_ok && (bmode == 2 || bmode == 3)) out = brighten(out, evy, bmode == 2);
-                    else if (fx && first_ok && bmode == 1 && second_ok) out = blend(out, cs & 0xffffffu, eva, evb);
+                    // over a second target the 3D blends by its own alpha
+                    // whatever the effect (melonDS): an opaque pixel stays
+                    // as it is. Mixed by EVA/EVB instead, Mario showed
+                    // through like a ghost in the trampoline minigames.
+                    if (second_ok) {
+                        if (a < 31) out = blend32(ct & 0xffffffu, cs & 0xffffffu, a + 1);
+                    } else if (fx && first_ok && (bmode == 2 || bmode == 3)) {
+                        out = brighten(out, evy, bmode == 2);
+                    }
                 } else if (top == L_OBJ && (ol.semi[x] || ol.alpha[x] < 31) && second_ok) {
                     if (ol.alpha[x] < 31)                    // bitmap OBJ alpha
                         out = blend(out, cs & 0xffffffu, (ol.alpha[x] + 1) / 2, 16 - (ol.alpha[x] + 1) / 2);

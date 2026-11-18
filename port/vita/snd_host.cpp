@@ -34,6 +34,8 @@
 #include <psp2/kernel/threadmgr.h>
 #endif
 
+extern "C" volatile int sm64ds_debug_log;   /* vita_display.cpp: the DEBUG LOG setting */
+
 namespace {
 typedef uint8_t u8;
 typedef int8_t s8;
@@ -148,6 +150,7 @@ struct Lfo { u8 target, speed, depth, range; u16 delay; };
 
 struct Track {
     bool active, muted, note_wait, tie, porta, cmp_flag;
+    bool note_end_wait;     // a note of length 0 with note wait on: the track waits for it to end
     int player;
     const u8 *base;             // the sequence's base: offsets count from it
     u32 pc;
@@ -181,6 +184,7 @@ struct Player {
     const u8 *bank;
     s8 tracks[16];
     u32 ticks;
+    u32 done_ticks;             // the tick its last track ended at (0: still running)
 };
 
 struct Driver {
@@ -576,7 +580,7 @@ s32 read_arg(Track &t, int type)
 void run_track(int ti)
 {
     Track &t = g.tr[ti];
-    for (int guard = 0; t.active && t.wait <= 0 && guard < 10000; ++guard) {
+    for (int guard = 0; t.active && t.wait <= 0 && !t.note_end_wait && guard < 10000; ++guard) {
         u8 op = t.base[t.pc++];
         bool run = true;
         int arg_type = -1;          // a prefix's override of the last argument
@@ -593,7 +597,15 @@ void run_track(int ti)
             const int len = arg(ARG_VARLEN);
             if (!run) continue;
             note_on(ti, op, vel, len);
-            if (t.note_wait) t.wait = len;
+            // a note of length 0 lasts as long as its sample: with note wait
+            // on, the track waits until it has ended (the DS driver's
+            // "note finish wait"). Running on instead started a new note
+            // 10000 times a tick in Yoshi's face minigame, which took the
+            // third core and froze the screen for seconds at a time.
+            if (t.note_wait) {
+                t.wait = len;
+                if (len == 0) t.note_end_wait = true;
+            }
             continue;
         }
         switch (op) {
@@ -719,6 +731,11 @@ void run_track(int ti)
         case 0xFF:                    // end of the track
             if (!run) break;
             t.active = false;
+            // its notes go into their release (the DS driver releases a
+            // finished track's channels): a note still held -- a looping
+            // sample in Yoshi's face minigame -- otherwise sounded on
+            // forever, and its player with it, past the minigame's end
+            release_track_channels(ti, false);
             break;
         default: {
             if (g.unknown_ops < 8) g.unknown_op_seen[g.unknown_ops] = op;
@@ -754,20 +771,31 @@ void step_players()
                 Track &t = g.tr[ti];
                 if (t.active) {
                     if (t.wait > 0) --t.wait;
-                    if (t.wait <= 0) run_track(ti);
+                    if (t.wait <= 0 && t.note_end_wait) {
+                        bool playing = false;
+                        for (int i = 0; i < CHANNELS && !playing; ++i)
+                            playing = g.ch[i].active && g.ch[i].seq && g.ch[i].track == ti;
+                        if (!playing) t.note_end_wait = false;
+                    }
+                    if (t.wait <= 0 && !t.note_end_wait) run_track(ti);
                 }
                 if (t.active) any = true;
             }
             if (!any) {
                 // every track has ended: the player stops once its notes have
-                bool sounding = false;
-                for (int i = 0; i < CHANNELS; ++i)
-                    if (g.ch[i].active && g.ch[i].seq && g.ch[i].track >= 0 && g.tr[g.ch[i].track].player == p)
-                        sounding = true;
+                // (or, whatever still sounds, 10 seconds of ticks later)
+                if (pl.done_ticks == 0) pl.done_ticks = pl.ticks ? pl.ticks : 1;
+                bool sounding = pl.ticks - pl.done_ticks < 480u * 10u;
+                if (sounding) {
+                    sounding = false;
+                    for (int i = 0; i < CHANNELS; ++i)
+                        if (g.ch[i].active && g.ch[i].seq && g.ch[i].track >= 0 && g.tr[g.ch[i].track].player == p)
+                            sounding = true;
+                }
                 if (!sounding) {
                     int nt = 0;
                     for (int k = 0; k < 16; ++k) nt += pl.tracks[k] >= 0;
-                    if (nt > 2 && g_end_logs < 50) {
+                    if (nt > 2 && sm64ds_debug_log && g_end_logs < 50) {
                         ++g_end_logs;
                         printf("  [sound] player %d's sequence ended by itself at tick %u (%d tracks)\n", p,
                                (unsigned)pl.ticks, nt);
@@ -896,6 +924,7 @@ void start_seq(int p, const u8 *base, u32 offset, const u8 *bank)
     pl.tempo_counter = 240;     // the first tick at once
     pl.bank = bank;
     pl.ticks = 0;
+    pl.done_ticks = 0;
     if (pl.prio == 0) pl.prio = 64;
     for (int k = 0; k < 16; ++k) pl.tracks[k] = -1;
     const int ti = alloc_track();
@@ -943,7 +972,7 @@ void command(int id, const u32 *a)
 {
     switch (id) {
     case CMD_START_SEQ:
-        if (g_start_logs < 120) {
+        if (sm64ds_debug_log && g_start_logs < 120) {
             ++g_start_logs;
             printf("  [sound] player %u starts a sequence (data %08x + %x, bank %08x)%s\n", (unsigned)a[0],
                    (unsigned)a[1], (unsigned)a[2], (unsigned)a[3],
@@ -955,7 +984,7 @@ void command(int id, const u32 *a)
         if (a[0] < PLAYERS) {
             int nt = 0;
             for (int k = 0; k < 16; ++k) nt += g.pl[a[0]].tracks[k] >= 0;
-            if (nt > 2 && g_end_logs < 50) {
+            if (nt > 2 && sm64ds_debug_log && g_end_logs < 50) {
                 ++g_end_logs;
                 printf("  [sound] player %u's sequence stopped by the game at tick %u (%d tracks)\n",
                        (unsigned)a[0], (unsigned)g.pl[a[0]].ticks, nt);
@@ -1099,7 +1128,7 @@ int audio_thread(SceSize, void *)
         mix(buf[which], GRAIN);
         sceAudioOutOutput(port, buf[which]);
         which ^= 1;
-        if (++report % (OUT_RATE / GRAIN * 30) == 0) {     // every half minute
+        if (++report % (OUT_RATE / GRAIN * 30) == 0 && sm64ds_debug_log) {     // every half minute
             std::lock_guard<std::mutex> hold(g_lock);
             int active = 0;
             for (const Channel &c : g.ch) active += c.active;

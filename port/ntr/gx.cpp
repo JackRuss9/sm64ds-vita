@@ -546,8 +546,65 @@ void exec(uint8_t cmd, const uint32_t *p, int np) {
             // translucent ones after, whatever order they were sent in: the
             // poison mist lying on Big Goomboss's ground was sent before the
             // ground, and drawn first the ground covered it.
-            std::stable_partition(g.tris.begin(), g.tris.end(),
-                                  [](const GxTriangle &t) { return !t.translucent; });
+            // Within each group it sorts them by their lowest and then their
+            // highest screen row (the translucent ones only without bit 0,
+            // "manual sort"; as melonDS). For translucent polygons that is
+            // the blending order. For opaque ones it only decides ties in
+            // depth, and those happen where the depth runs out of precision,
+            // at the far plane: the mission select's stars sit there, the
+            // eyes and the face get the same depth, and the DS draws the
+            // small eyes first, so they win. Only those far-plane polygons
+            // are sorted here; the rest keep their sending order, which
+            // keeps a model's triangles together for the GPU (sorting all
+            // of them split the drawing into hundreds of small batches and
+            // the menus dropped to 26 fps).
+            {
+                const bool manual = p[0] & 1;
+                bool any = false;
+                for (GxTriangle &t : g.tris) {
+                    float lo = t.v[0].y, hi = t.v[0].y;
+                    bool far = true;
+                    for (const GxVertex &v : t.v) {
+                        lo = std::min(lo, v.y);
+                        hi = std::max(hi, v.y);
+                        far = far && v.z >= 0.99999f;
+                    }
+                    const unsigned row = (unsigned)(std::clamp((int)hi, 0, 255) << 8 | std::clamp((int)lo, 0, 255));
+                    t.sort_key = t.translucent ? (0x20000u | (manual ? 0u : row)) : far ? (0x10000u | row) : 0u;
+                    any = any || t.sort_key != 0;
+                }
+                if (any) {
+                    // sorted by index, then moved once: the triangles are big
+                    static thread_local std::vector<uint32_t> order;
+                    static thread_local std::vector<GxTriangle> sorted;
+                    order.resize(g.tris.size());
+                    for (uint32_t i = 0; i < order.size(); ++i) order[i] = i;
+                    std::stable_sort(order.begin(), order.end(), [](uint32_t x, uint32_t y) {
+                        return g.tris[x].sort_key < g.tris[y].sort_key;
+                    });
+                    sorted.clear();
+                    sorted.reserve(g.tris.size());
+                    for (uint32_t i : order) sorted.push_back(g.tris[i]);
+                    g.tris.swap(sorted);
+                }
+            }
+            // SWAP_BUFFERS bit 1: this frame is depth-tested by W (the
+            // distance), not by Z/W (the last Bowser fight uses it: Z/W
+            // there was too coarse, and his shock waves on the floor broke
+            // into stripes). The depth handed on is 1 - c/w, c just under
+            // the frame's nearest w: it keeps W's order, fits [0, 1), and,
+            // as 1/w varies linearly across the screen, both renderers
+            // interpolate it exactly inside big polygons.
+            if (p[0] & 2) {
+                float wmin = 0.0f;
+                for (const GxTriangle &t : g.tris)
+                    for (const GxVertex &v : t.v)
+                        if (v.w > 0.0f && (wmin == 0.0f || v.w < wmin)) wmin = v.w;
+                const float c = wmin > 0.0f ? wmin * 0.999f : 1.0f;
+                for (GxTriangle &t : g.tris)
+                    for (GxVertex &v : t.v)
+                        v.z = v.w > 0.0f ? 1.0f - c / v.w : 0.0f;
+            }
             g.shown.swap(g.tris);
             g.tris.clear();
             g.swapped = true;
@@ -993,7 +1050,9 @@ void render_impl(Framebuffer &fb, bool layer, const std::vector<GxTriangle> &tri
                 if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                 const float l0 = w1, l1 = w2, l2 = w0;   // barycentric for a, b, c
                 const float z = l0 * a.z + l1 * b.z + l2 * c.z;
-                if (!g_gx_debug_nodepth && z >= depth[y][x]) continue;
+                // depth "equal" (POLYGON_ATTR bit 14): a decal on what is
+                // there, passed within the DS's margin (0x200 of 24 bits)
+                if (!g_gx_debug_nodepth && z >= depth[y][x] + ((t.attr & 0x4000) ? 3.1e-5f : 0.0f)) continue;
                 // Depth is written only after the texel passes the alpha test
                 // below -- a transparent texel must not occlude what is behind it.
                 // Texture first; the vertex colour modulates it. UVs are

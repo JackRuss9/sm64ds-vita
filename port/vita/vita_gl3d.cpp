@@ -74,6 +74,7 @@ struct GlTex {
     bool partial;      // some texel with an alpha between 0 and full
 };
 std::unordered_map<const uint32_t *, GlTex> g_tex;
+unsigned g_tex_made, g_tex_deleted;     // for the debug log
 
 /* Decoded texels freed (gx_set_texture_free_hook, any thread): their GPU
    copies go before the next frame looks any texture up, since the decoder
@@ -98,6 +99,7 @@ void forget_freed_textures()
         if (it == g_tex.end()) continue;
         glDeleteTextures(1, &it->second.id);
         g_tex.erase(it);
+        ++g_tex_deleted;
     }
 }
 
@@ -154,10 +156,9 @@ const char *kFsMix =
     "      if (mode < 1.5) {\n"
     "        float s_ok = fmod(floor(code / 4.0), 2.0);\n"
     "        float fxf = fmod(floor(code / 8.0), 2.0);\n"
-    "        if (a3 < 30.5 && s_ok > 0.5) o = (c.rgb * (a3 + 1.0) + k.rgb * (31.0 - a3)) / 32.0;\n"
+    "        if (s_ok > 0.5) o = a3 < 30.5 ? (c.rgb * (a3 + 1.0) + k.rgb * (31.0 - a3)) / 32.0 : c.rgb;\n"
     "        else if (fxf > 0.5 && u_b.w > 2.5) o = c.rgb - c.rgb * u_b.z;\n"
     "        else if (fxf > 0.5 && u_b.w > 1.5) o = c.rgb + (1.0 - c.rgb) * u_b.z;\n"
-    "        else if (fxf > 0.5 && u_b.w > 0.5 && s_ok > 0.5) o = min(c.rgb * u_b.x + k.rgb * u_b.y, 1.0);\n"
     "        else o = c.rgb;\n"
     "      } else {\n"
     "        float wa = fmod(floor(code / 4.0), 32.0) / 16.0;\n"
@@ -222,6 +223,7 @@ const GlTex &texture_for(const ntr::GxTriangle &t)
         if (it->second.w == t.tw && it->second.h == t.th) return it->second;
         glDeleteTextures(1, &it->second.id);    // the memory now holds another texture
         g_tex.erase(it);
+        ++g_tex_deleted;
     }
     const size_t n = (size_t)t.tw * t.th;
     bool partial = false;
@@ -230,6 +232,7 @@ const GlTex &texture_for(const ntr::GxTriangle &t)
         if (a != 0 && a < 0xf8) partial = true;
     }
     GlTex g;
+    ++g_tex_made;
     glGenTextures(1, &g.id);
     glBindTexture(GL_TEXTURE_2D, g.id);
     // the decoded texels (0xAARRGGBB) go up as they are
@@ -259,6 +262,7 @@ void drop_stale(const ntr::GxFrame &frame)
         if (!live.count(it->first)) {
             glDeleteTextures(1, &it->second.id);
             it = g_tex.erase(it);
+            ++g_tex_deleted;
         } else {
             ++it;
         }
@@ -269,6 +273,7 @@ void drop_stale(const ntr::GxFrame &frame)
 struct Batch {
     const ntr::GxTriangle *first;   // texture and wrap come from it
     bool textured, depth_write;
+    bool depth_equal;               // POLYGON_ATTR bit 14: drawn where the depth equals
     int trans_id;                   // translucent polygon: its ID (0..63); -1 opaque
     std::vector<float> pos, uv;
     std::vector<uint8_t> col;
@@ -331,6 +336,19 @@ void flush(Batch &b, float alpha_ref)
     }
     glUniform4f(g_u_p, alpha_ref, b.textured ? 1.0f : 0.0f, 0.0f, 0.0f);
     glDepthMask(b.depth_write ? GL_TRUE : GL_FALSE);
+    // Depth "equal" polygons (POLYGON_ATTR bit 14) are decals on what is
+    // already drawn: Bowser's shock waves on the floor of his last fight.
+    // The DS passes them within a small margin of the depth there; with
+    // the plain "less" test they fought the floor and broke into stripes.
+    // Here: "less or equal", nudged a step towards the viewer.
+    if (b.depth_equal) {
+        glDepthFunc(GL_LEQUAL);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -4.0f);
+    } else {
+        glDepthFunc(GL_LESS);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+    }
     // A translucent pixel is not drawn over a translucent pixel of the same
     // polygon ID (GBATEK, "3D Polygon Attributes"): a model fading in or out
     // shows its nearest layer, not every layer blended. The stencil keeps
@@ -468,7 +486,9 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
         if (opaque && textured) opaque = !texture_for(t).partial;
         const bool depth_write = opaque || (t.attr & 0x800);
         const int trans_id = t.alpha < 31 ? (int)((t.attr >> 24) & 63) : -1;
+        const bool depth_equal = (t.attr & 0x4000) != 0;
         if (b.first && (textured != b.textured || depth_write != b.depth_write || trans_id != b.trans_id
+                        || depth_equal != b.depth_equal
                         || (textured && (t.tex != b.first->tex || t.wrap != b.first->wrap)))) {
             flush(b, alpha_ref);
             b.first = nullptr;
@@ -477,6 +497,7 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
             b.first = &t;
             b.textured = textured;
             b.depth_write = depth_write;
+            b.depth_equal = depth_equal;
             b.trans_id = trans_id;
         }
         const float pa = (float)t.alpha;
@@ -496,6 +517,8 @@ extern "C" void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer 
     }
     if (b.first) flush(b, alpha_ref);
     glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_POLYGON_OFFSET_FILL);
     if (g_rt_stencil) glDisable(GL_STENCIL_TEST);
 
     if (!fb) {                  // mixed in on the GPU (sm64ds_gl_present)
@@ -540,10 +563,39 @@ void quad(GLuint tex, float x, float y, float w, float h, float u1, float v1)
 
 /* Both screens at their layout rectangles and the frame-rate line at the
    top left; then shown. */
-extern "C" void sm64ds_gl_present(const GlScreens &s)
+// Engine A's picture kept for two-screen 3D (GlScreens::hold), two of them
+// in turn: this frame's is drawn while last frame's is shown.
+constexpr int HOLD_W = 512, HOLD_H = 384;
+GLuint g_hold_tex[2], g_hold_fbo[2];
+int g_hold_cur = -1;            // the last one drawn; -1 none yet
+
+bool make_hold()
+{
+    if (g_hold_fbo[0]) return true;
+    for (int i = 0; i < 2; ++i) {
+        g_hold_tex[i] = make_texture(HOLD_W, HOLD_H, GL_LINEAR);
+        glGenFramebuffers(1, &g_hold_fbo[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_hold_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_hold_tex[i], 0);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+extern "C" void sm64ds_gl_texture_counts(unsigned *made, unsigned *deleted, unsigned *cached)
+{
+    *made = g_tex_made;
+    *deleted = g_tex_deleted;
+    *cached = (unsigned)g_tex.size();
+    g_tex_made = g_tex_deleted = 0;
+}
+
+extern "C" void sm64ds_gl_present(GlScreens &s)
 {
     const int *rect_a = s.a_top ? s.top_rect : s.bottom_rect;
     const int *rect_b = s.a_top ? s.bottom_rect : s.top_rect;
+    // the picture last frame kept, for the other screen, before this one's
+    const int shown_hold = (s.dual && g_hold_cur >= 0) ? g_hold_cur : -1;
     if (rect_a[2] > 0) {
         if (s.a_ctl) {
             upload(g_a_off_tex, *s.a);
@@ -555,32 +607,11 @@ extern "C" void sm64ds_gl_present(const GlScreens &s)
     if (rect_b[2] > 0) upload(g_screen_tex[1], *s.b);
     glBindTexture(GL_TEXTURE_2D, g_text_tex);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, s.text_w, s.text_h, GL_BGRA, GL_UNSIGNED_BYTE, s.text);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, 960, 544);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
-    glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glDisableVertexAttribArray(2);
-    // The larger screen first, the smaller one over it: in Widescreen 16:9
-    // one screen fills the display and the other is an inset in its corner.
-    // While the game shows engine A on the touch screen (POWCNT bit 15 clear,
-    // as at the title and file select), engine B is the full-screen one, and
-    // drawn after A it covered the inset: the touch screen was missing.
-    const bool b_first = rect_b[2] * rect_b[3] > rect_a[2] * rect_a[3];
-    auto draw_b = [&] {
-        glUseProgram(g_prog2d);
-        glUniform1i(g_u_tex2d, 0);
-        glActiveTexture(GL_TEXTURE0);
-        if (rect_b[2] > 0)
-            quad(g_screen_tex[1], (float)rect_b[0], (float)rect_b[1], (float)rect_b[2], (float)rect_b[3], 1, 1);
-    };
-    if (b_first) draw_b();
-    if (rect_a[2] > 0 && s.a_ctl) {
+    // engine A's picture, mixed (2D, 3D, blending, brightness) into a rectangle
+    auto draw_a_mix = [&](float x, float y, float w, float h) {
         glUseProgram(g_progmix);
         glUniform1i(g_u_mix_off, 0);
         glUniform1i(g_u_mix_ctl, 1);
@@ -592,8 +623,63 @@ extern "C" void sm64ds_gl_present(const GlScreens &s)
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, g_rt_tex);
         glActiveTexture(GL_TEXTURE0);
-        quad(g_a_off_tex, (float)rect_a[0], (float)rect_a[1], (float)rect_a[2], (float)rect_a[3], 1, 1);
+        quad(g_a_off_tex, x, y, w, h, 1, 1);
+    };
+    // two-screen 3D: this frame's picture kept, into the one not shown now
+    if (s.hold && s.a_ctl && make_hold()) {
+        const int next = g_hold_cur == 0 ? 1 : 0;
+        glBindFramebuffer(GL_FRAMEBUFFER, g_hold_fbo[next]);
+        glViewport(0, 0, HOLD_W, HOLD_H);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        // the whole target, upside down: in vitaGL's render targets row 0 is
+        // where clip space y is -1, and is read as the top (v 0), as the 3D
+        // render target is (sm64ds_gl_render_3d)
+        draw_a_mix(0, 544, 960, -544);
+        g_hold_cur = next;
+        // the capture, read back here: drawn, read, then the display's own
+        // frame. Read after the frame was shown (0123), the next frames
+        // stopped showing -- the live view froze until the next capture
+        // (Yoshi's face minigame).
+        s.read_back_done = false;
+        if (s.read_back) {
+            static uint8_t px[HOLD_W * HOLD_H * 4];
+            glReadPixels(0, 0, HOLD_W, HOLD_H, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            // every other pixel of every other row; row 0 is the top
+            for (int y = 0; y < H; ++y) {
+                const uint8_t *row = px + (size_t)(2 * y) * HOLD_W * 4;
+                for (int x = 0; x < W; ++x) {
+                    const uint8_t *q = row + x * 8;
+                    s.read_back[y * W + x] = 0xFF000000u | (uint32_t)q[0] << 16 | (uint32_t)q[1] << 8 | q[2];
+                }
+            }
+            s.read_back_done = true;
+        }
     }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, 960, 544);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // The larger screen first, the smaller one over it: in Widescreen 16:9
+    // one screen fills the display and the other is an inset in its corner.
+    // While the game shows engine A on the touch screen (POWCNT bit 15 clear,
+    // as at the title and file select), engine B is the full-screen one, and
+    // drawn after A it covered the inset: the touch screen was missing.
+    const bool b_first = rect_b[2] * rect_b[3] > rect_a[2] * rect_a[3];
+    auto draw_b = [&] {
+        glUseProgram(g_prog2d);
+        glUniform1i(g_u_tex2d, 0);
+        glActiveTexture(GL_TEXTURE0);
+        if (rect_b[2] > 0)
+            quad(shown_hold >= 0 ? g_hold_tex[shown_hold] : g_screen_tex[1], (float)rect_b[0], (float)rect_b[1],
+                 (float)rect_b[2], (float)rect_b[3], 1, 1);
+    };
+    if (b_first) draw_b();
+    if (rect_a[2] > 0 && s.a_ctl) draw_a_mix((float)rect_a[0], (float)rect_a[1], (float)rect_a[2], (float)rect_a[3]);
     glUseProgram(g_prog2d);
     glUniform1i(g_u_tex2d, 0);
     glActiveTexture(GL_TEXTURE0);

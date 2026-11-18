@@ -51,3 +51,22 @@ void operator delete(void *p) noexcept { host_delete(p); }
 void operator delete[](void *p) noexcept { host_delete(p); }
 void operator delete(void *p, std::size_t) noexcept { host_delete(p); }
 void operator delete[](void *p, std::size_t) noexcept { host_delete(p); }
+
+/* The global operator new: zeroed, as the DS's is. Every DS heap is made
+   with the allocator's clear flag (CreateExpandingHeapAllocator(..., 3):
+   bit 0 zero-fills each block), and the game counts on it -- daDemo_c's
+   anmModel_c only sets mTexSeq when the model has texture animations and
+   tests it every frame otherwise. From malloc it held garbage, and the
+   ending after the last Bowser fight (the demo models 0x1a-0x2d) crashed
+   in dExtFrameCtrl_c::GetFrameCount through it. calloc gives the same
+   zeroed block to the game's objects and the port's containers alike. */
+static void *host_new(std::size_t n)
+{
+    void *p = calloc(1, n ? n : 1);
+    if (!p) abort();
+    return p;
+}
+void *operator new(std::size_t n) { return host_new(n); }
+void *operator new[](std::size_t n) { return host_new(n); }
+void *operator new(std::size_t n, const std::nothrow_t &) noexcept { return calloc(1, n ? n : 1); }
+void *operator new[](std::size_t n, const std::nothrow_t &) noexcept { return calloc(1, n ? n : 1); }

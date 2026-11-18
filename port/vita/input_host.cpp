@@ -31,6 +31,7 @@
 #if defined(__vita__)
 #include <psp2/ctrl.h>
 #include <psp2/touch.h>
+#include <cstdio>
 #endif
 
 extern "C" {
@@ -50,6 +51,8 @@ bool sm64ds_menu_pad(uint32_t buttons, uint32_t dpad_buttons);  /* vita_display.
 bool sm64ds_rear_capture_enabled(void);                        /* vita_display.cpp */
 bool sm64ds_right_stick_camera(void);                          /* vita_display.cpp */
 void sm64ds_savestate_request(int action);                     /* savestate_host.cpp */
+extern volatile int sm64ds_moon_jump_steer;   /* Player.cpp: the moon jump's air steering */
+void sm64ds_moon_jump_apply(void *player);    /* Player.cpp: the steering, once a frame */
 extern unsigned char data_0209f4ae[];  /* the controller records' mode byte, 0x18 apart */
 extern volatile int sm64ds_wide_view;  /* vita_display.cpp: the 3D drawn 16:9 */
 extern unsigned char data_0209f43c[];  /* the view clipper (dClipper) */
@@ -77,7 +80,8 @@ void put16(uint32_t ds, uint16_t v) { *static_cast<volatile uint16_t *>(::ntr::h
                      frame) -- both copies: mVertSpeed (dActor_c +0xa8) and
                      Player's mPrevVertSpeed (+0x640), which the air states
                      work from and copy back over mVertSpeed (setting only
-                     the first did nothing);
+                     the first did nothing); only in the air, with the
+                     player in control, and the stick steers meanwhile;
      god mode        no damage: the invincibility a hit gives (mInvincibleTimer,
                      +0x6a0, counted down each frame) kept at 3 -- odd before
                      the frame, so even (drawn, not blinking) when the player
@@ -111,8 +115,19 @@ void apply_cheats(uint32_t vita_buttons)
         if (*inv < 3) *inv = 3;
         if (no < 4 && data_02092144[no] < 0x800 && data_02092144[no] > 0) data_02092144[no] = 0x800;
     }
-    if (sm64ds_cheat_moon_jump && (vita_buttons & SCE_CTRL_CIRCLE)) {
-        if (player) {
+    // moon jump: only while the player is in the air and has control --
+    // Circle is also the talk button, and lifting a player who talks (the
+    // talk state zeroes gravity) sent it off, floating for good. While it
+    // lifts, the stick steers it (Player.cpp, sm64ds_moon_jump_apply), and
+    // the game's own air control is left out.
+    sm64ds_moon_jump_steer = 0;
+    if (sm64ds_cheat_moon_jump && (vita_buttons & SCE_CTRL_CIRCLE) && player &&
+        *reinterpret_cast<uint8_t *>(player + 0x6de) &&        /* mIsAirborne */
+        !*reinterpret_cast<uint8_t *>(player + 0x6f6) &&       /* mIsControlDisabled */
+        !*reinterpret_cast<void **>(player + 0x368)) {          /* mTalkActor */
+        sm64ds_moon_jump_steer = 1;
+        sm64ds_moon_jump_apply(player);
+        {
             int32_t *vert = reinterpret_cast<int32_t *>(player + 0xa8);
             int32_t *prev = reinterpret_cast<int32_t *>(player + 0x640);   /* mPrevVertSpeed */
             if (*vert < 0x14000) *vert = 0x14000;
@@ -208,6 +223,23 @@ void sm64ds_input_frame(void)
     if (!menu && sceTouchPeek(SCE_TOUCH_PORT_FRONT, &t, 1) >= 0 && t.reportNum > 0)
         // the panel reports 1920x1088: half that is the display
         down = sm64ds_display_to_touch(t.report[0].x / 2, t.report[0].y / 2, &x, &y);
+    // A finger held still came and went every other frame (the debug log's
+    // input lines: a report, none, a report...), so a drag reached the game
+    // as a string of taps: Yoshi's face strips crawled, and Bounce and
+    // Pounce's touch screen seemed dead. A frame or two without a report,
+    // right after one, keeps the last point.
+    {
+        static int last_x, last_y, missing = 99;
+        if (down) {
+            last_x = x;
+            last_y = y;
+            missing = 0;
+        } else if (!menu && ++missing <= 2) {
+            x = last_x;
+            y = last_y;
+            down = true;
+        }
+    }
     // the right stick turns the camera: the game turns it a step at a time
     // when the camera arrows on the touch screen are tapped, so while the
     // stick is held over, they are -- a tap every 12 frames. The arrows'

@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <utility>
 #include <string.h>
 #include <time.h>
 
@@ -49,6 +50,11 @@ extern "C" {
 volatile int sm64ds_wide_view;
 volatile int sm64ds_cheat_infinite_lives, sm64ds_cheat_moon_jump, sm64ds_cheat_infinite_power,
     sm64ds_cheat_infinite_breath, sm64ds_cheat_99_coins, sm64ds_cheat_god_mode;
+/* The DEBUG LOG setting: off (the default), the log has the start-up, the
+   speed, loads and crashes; on, also what was added while hunting bugs --
+   the camera traces, the sound players, the display registers, input,
+   glitch watch and the drawing times. */
+volatile int sm64ds_debug_log;
 }
 
 namespace {
@@ -81,10 +87,13 @@ Copy g_copy;
 struct Capture {
     bool ready;
     uint32_t cnt;                       // DISPCAPCNT it was made for
+    uint8_t vcnt;                       // the target bank's VRAMCNT in that frame
+    float ms;                           // how long making it took (debug log)
     int w, h;
     uint16_t px[256 * 192];
 };
 Capture g_cap;
+uint8_t g_copy_vramcnt[4];              // VRAMCNT A-D of the frame being drawn
 // Screen layouts (the GPU view; the CPU one stays side by side): where the
 // top and the touch screen go on the 960x544 display, {x, y, w, h}; a zero
 // width hides one. Chosen in the settings menu (below).
@@ -250,6 +259,7 @@ const MenuItem kSettingsItems[] = {
     {"REAR TAP CAPTURES", "rear_capture", &g_rear_capture, 0, 1, 0},
     {"GAME SPEED", "game_speed", &g_speed_idx, 0, 4, 4},
     {"RIGHT STICK CAMERA", "right_stick_camera", &g_right_stick_camera, 0, 1, 0},
+    {"DEBUG LOG", "debug_log", &sm64ds_debug_log, 0, 1, 0},
 };
 const MenuItem kCheatItems[] = {
     {"INFINITE LIVES", "cheat_lives", &sm64ds_cheat_infinite_lives, 0, 1, 0},
@@ -397,7 +407,7 @@ void timing(double t0, double t3d, double t2d, double t_end)
     s2d += t2d - t3d;
     sp += t_end - t2d;
     if (++n == 300) {
-        printf("  [draw] per frame drawn: 3D %.1f ms, 2D %.1f ms, present %.1f ms (%s)\n",
+        if (sm64ds_debug_log) printf("  [draw] per frame drawn: 3D %.1f ms, 2D %.1f ms, present %.1f ms (%s)\n",
                s3d * 1000 / n, s2d * 1000 / n, sp * 1000 / n, g_gl ? "GPU" : "CPU");
         s3d = s2d = sp = 0;
         n = 0;
@@ -446,6 +456,7 @@ void make_capture(uint32_t cnt, const ntr::Framebuffer &a_composed)
         src = &capA;
     }
     g_cap.cnt = cnt;
+    g_cap.vcnt = g_copy_vramcnt[(cnt >> 16) & 3];
     g_cap.w = kW[size];
     g_cap.h = kH[size];
     const bool alpha_from_3d = cnt & (1u << 24);
@@ -549,10 +560,30 @@ int draw_thread(SceSize, void *)
             }
         }
         if (!g_gl) ntr::ppu_apply_master_brightness(mb_a, a);    // the GPU's, else
+        // Two-screen 3D: the game captures engine A every frame while it
+        // switches screens (POWCNT bit 15) every frame. On the GPU, engine A's
+        // picture is kept there and shown on the other screen the next frame
+        // (GlScreens::hold, dual), and the capture comes from it, read back:
+        // making it on the CPU took 60 ms, and its picture beside the GPU's
+        // flickered.
+        static bool prev_cap_on;
+        static uint16_t prev_powcnt;
+        uint32_t cap;
+        memcpy(&cap, regions[4] + 0x64, 4);
+        const bool cap_on = cap & 0x80000000u;
+        const bool hold = g_gl && cap_on && !(cap & (1u << 24)) && ((cap >> 29) & 3) == 0;
+        const bool dual = hold && prev_cap_on && ((powcnt ^ prev_powcnt) & 0x8000);
+        prev_cap_on = cap_on;
+        prev_powcnt = powcnt;
         {
-            uint32_t cap;
-            memcpy(&cap, regions[4] + 0x64, 4);
-            if ((cap & 0x80000000u) && !g_cap.ready) make_capture(cap, a);
+            if (cap_on) {
+                memcpy(g_copy_vramcnt, regions[4] + 0x240, 4);
+                if (!g_cap.ready && !hold) {
+                    const double t_cap = seconds();
+                    make_capture(cap, a);
+                    g_cap.ms = (float)((seconds() - t_cap) * 1000.0);
+                }
+            }
         }
         const double t_2d = seconds();
         // POWCNT1 bit 15: engine A on the top screen (the usual case)
@@ -613,7 +644,52 @@ int draw_thread(SceSize, void *)
             sc.menu_changed = g_menu_open >= 0 && render_menu();
             sc.menu_w = MENU_W;
             sc.menu_h = MENU_H;
+            sc.hold = hold;
+            sc.dual = dual;
+            // the capture, from the GPU's picture (not while two-screen 3D
+            // runs: there the other screen shows the kept picture, and the
+            // read back cost 11 ms a frame); the first frame of it, and a
+            // single capture such as a pause screen's, still get one
+            static uint32_t held[ntr::SCREEN_W * ntr::SCREEN_H];
+            const bool want_cap = hold && !dual && !g_cap.ready;
+            sc.read_back = want_cap ? held : nullptr;
+            sc.read_back_done = false;
+            const double t_cap = seconds();
             sm64ds_gl_present(sc);
+            if (want_cap && sc.read_back_done) {
+                {
+
+                    static const int kW[4] = {128, 256, 256, 256}, kH[4] = {128, 64, 128, 192};
+                    const unsigned size = (cap >> 20) & 3;
+                    g_cap.cnt = cap;
+                    g_cap.vcnt = g_copy_vramcnt[(cap >> 16) & 3];
+                    g_cap.w = kW[size];
+                    g_cap.h = kH[size];
+                    for (int y = 0; y < g_cap.h; ++y)
+                        for (int x = 0; x < g_cap.w; ++x) {
+                            const uint32_t c = held[y * ntr::SCREEN_W + x];
+                            g_cap.px[y * g_cap.w + x] = static_cast<uint16_t>(
+                                ((c >> 19) & 31) | ((c >> 11) & 31) << 5 | ((c >> 3) & 31) << 10 | 0x8000);
+                        }
+                    g_cap.ms = (float)((seconds() - t_cap) * 1000.0);
+                    g_cap.ready = true;
+                }
+            }
+            {
+                // debug log: a frame that took the drawing core over 100 ms,
+                // where its time went (the 3D, the 2D, the GPU's present) and
+                // the GPU textures made and dropped since the last such line
+                const double t_end = seconds();
+                static int slow_lines;
+                unsigned made, deleted, cached;
+                sm64ds_gl_texture_counts(&made, &deleted, &cached);
+                if (sm64ds_debug_log && t_end - t_start > 0.1 && slow_lines < 60) {
+                    ++slow_lines;
+                    printf("  [slow frame] t %.3f: %.0f ms (3D %.0f, 2D %.0f, present %.0f); GPU textures made %u,"
+                           " dropped %u, held %u\n", t_end, (t_end - t_start) * 1000, (t_3d - t_start) * 1000,
+                           (t_2d - t_3d) * 1000, (t_end - t_2d) * 1000, made, deleted, cached);
+                }
+            }
             timing(t_start, t_3d, t_2d, seconds());
             sceKernelSignalSema(g_done, 1);
             continue;
@@ -706,21 +782,79 @@ extern "C" void sm64ds_display_present(void)
 {
     if (!g_ready) return;
 #if defined(__vita__)
-    if (sceKernelPollSema(g_done, 1) < 0) {
+    // While the game captures the display, every frame must be drawn (the
+    // capture is made from it): wait for the drawing thread instead of
+    // skipping the frame.
+    // On the GPU, two-screen 3D needs no wait: each screen's picture is kept
+    // there (GlScreens::hold). A frame is drawn when the drawing core is
+    // free and it shows the other screen than the last one drawn, so both
+    // screens stay fresh while the game runs at full speed (waiting for every
+    // frame held it to 17 fps).
+    const bool capturing = NTR_MMIO(uint32_t, 0x04000064) & 0x80000000u;
+    // Two-screen 3D on the GPU: the DS shows a frame's 3D one frame after the
+    // game drew it, beside the next frame's 2D and screen choice (POWCNT).
+    // Paired with its own frame's, each screen got the other's 3D: Bounce
+    // and Pounce's Marios on the touch screen were the top screen's, away
+    // from their arrows (where the game takes the touches). The 3D is kept
+    // every frame and the last frame's is drawn.
+    static ntr::GxFrame kept3d[2];
+    static unsigned kept_k, kept_run;
+    const bool two_screen3d = capturing && g_gl && (NTR_MMIO(uint32_t, 0x04000000) & 0x8);
+    if (two_screen3d) {
+        kept_k ^= 1;
+        ntr::gx_capture_frame(kept3d[kept_k]);
+        ++kept_run;
+    } else {
+        kept_run = 0;
+    }
+    static uint16_t last_parity = 0xffff;
+    static unsigned same_parity;
+    const uint16_t parity = NTR_MMIO(uint16_t, 0x04000304) & 0x8000;
+    if (capturing && g_gl && parity == last_parity && ++same_parity < 4) return;
+    if (capturing && !g_gl) {
+        sceKernelWaitSema(g_done, 1, nullptr);
+    } else if (sceKernelPollSema(g_done, 1) < 0) {
         ++g_dropped;
         return;
     }
+    // Debug log: the display capture's timeline, one line a frame drawn while
+    // the game captures (the first 240): the game's bank setup and request
+    // now, and what is written from the last capture.
+    static int cap_lines;
+    const uint32_t cap_now = NTR_MMIO(uint32_t, 0x04000064);
+    const bool cap_log = sm64ds_debug_log && cap_lines < 240 && ((cap_now & 0x80000000u) || g_cap.ready);
+    if (cap_log) {
+        ++cap_lines;
+        printf("  [capture] t %.3f: DISPCAPCNT %08x POWCNT %04x VRAMCNT C %02x D %02x, DISPCNT B %08x", seconds(),
+               (unsigned)cap_now, (unsigned)(uint16_t)NTR_MMIO(uint16_t, 0x04000304),
+               (unsigned)(uint8_t)NTR_MMIO(uint8_t, 0x04000242), (unsigned)(uint8_t)NTR_MMIO(uint8_t, 0x04000243),
+               (unsigned)(uint32_t)NTR_MMIO(uint32_t, 0x04001000));
+        if (g_cap.ready)
+            printf("; writing the last one (%08x, VRAMCNT then %02x, made in %.1f ms) at %08x\n", (unsigned)g_cap.cnt,
+                   g_cap.vcnt, g_cap.ms, (unsigned)ntr::vram_bank_live((int)((g_cap.cnt >> 16) & 3), nullptr));
+        else
+            printf("; nothing to write\n");
+    }
+    last_parity = parity;
+    same_parity = 0;
     if (g_cap.ready) {          // last frame's capture into its bank, then the bit cleared
         const unsigned bank = (g_cap.cnt >> 16) & 3;
         // Only into a bank in LCDC or engine A BG use: the capture writes the
         // bank's memory, and one mapped for textures holds the 3D's textures
         // (a capture aimed at bank A while it held the castle's textures
         // wrote black over them: the castle's dotted, blocky walls in 0108).
-        const uint8_t vcnt = NTR_MMIO(uint8_t, 0x04000240 + bank);
+        // The mapping is the one of the frame the capture was made in: by
+        // now the game may have handed the bank to the touch screen. Two-
+        // screen 3D (the minigames) does that every frame: engine A draws
+        // one screen, its picture is captured into bank C or D, and the next
+        // frame engine B shows that bank as a bitmap while A draws the other
+        // screen; checked against the new mapping, every capture was dropped
+        // and the touch screen showed stripes of old memory.
+        const uint8_t vcnt = g_cap.vcnt;
         const unsigned mst = vcnt & 7;
         const bool writable = (vcnt & 0x80) && (mst == 0 || mst == 1);
         static int told;
-        if (told < 8) {
+        if (sm64ds_debug_log && told < 8) {
             ++told;
             printf("  display capture: %08x into bank %c (VRAMCNT %02x)%s\n", (unsigned)g_cap.cnt, 'A' + bank,
                    vcnt, writable ? "" : ", not written: the bank holds textures or sprites");
@@ -734,13 +868,15 @@ extern "C" void sm64ds_display_present(void)
                 for (int x = 0; x < g_cap.w; ++x, off = (off + 2) % bank_size)
                     memcpy(dst + off, &g_cap.px[y * g_cap.w + x], 2);
         }
-        NTR_MMIO(uint32_t, 0x04000064) &= ~0x80000000u;
         g_cap.ready = false;
     }
     g_copy.has3d = NTR_MMIO(uint32_t, 0x04000000) & 0x8;     // DISPCNT A: BG0 is 3D
     // the 3D frame is captured here (its triangles and the textures they
     // use) and rendered on the drawing thread with the rest
-    if (g_copy.has3d) ntr::gx_capture_frame(g_copy.frame3d);
+    if (g_copy.has3d) {
+        if (two_screen3d && kept_run >= 2) std::swap(g_copy.frame3d, kept3d[kept_k ^ 1]);   // the last frame's
+        else ntr::gx_capture_frame(g_copy.frame3d);
+    }
     copy_range(0x04000000, 0x2000);         // I/O
     copy_range(0x05000000, 0x800);          // palettes
     copy_range(0x07000000, 0x800);          // OAM
@@ -749,6 +885,12 @@ extern "C" void sm64ds_display_present(void)
     copy_range(0x06400000, 0x40000);        // engine A OBJ
     copy_range(0x06600000, 0x20000);        // engine B OBJ
     copy_range(0x06800000, 0xA4000);        // the banks' homes (extended palettes, LCDC)
+    // The capture this frame asked for is made from the copy above; the
+    // hardware clears the enable bit when it is done. Cleared before the
+    // copy (as up to 0120), the request the game had just made again for
+    // this frame never reached the drawing thread, and every other capture
+    // was lost.
+    NTR_MMIO(uint32_t, 0x04000064) &= ~0x80000000u;
     sceKernelSignalSema(g_go, 1);
 #endif
 }
@@ -828,10 +970,10 @@ extern "C" bool sm64ds_menu_pad(uint32_t buttons, uint32_t dpad_buttons)
         g_menu_open = -1;
         wait_release = true;
         settings_save();
-        printf("  menu closed: layout %d, 3D %dx, frame rate %s, rear captures %s, speed %d%%, right stick camera %s;"
+        printf("  menu closed: layout %d, 3D %dx, frame rate %s, rear captures %s, speed %d%%, right stick camera %s, debug log %s;"
                " infinite lives %s, moon jump %s, infinite power %s, infinite breath %s, 99 coins %s, god mode %s\n",
                g_layout, g_scale, g_show_fps ? "shown" : "hidden", g_rear_capture ? "on" : "off",
-               kSpeeds[g_speed_idx], g_right_stick_camera ? "on" : "off",
+               kSpeeds[g_speed_idx], g_right_stick_camera ? "on" : "off", sm64ds_debug_log ? "on" : "off",
                sm64ds_cheat_infinite_lives ? "on" : "off", sm64ds_cheat_moon_jump ? "on" : "off",
                sm64ds_cheat_infinite_power ? "on" : "off", sm64ds_cheat_infinite_breath ? "on" : "off",
                sm64ds_cheat_99_coins ? "on" : "off", sm64ds_cheat_god_mode ? "on" : "off");

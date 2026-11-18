@@ -25,6 +25,7 @@
 #include <string.h>
 
 extern "C" {
+extern volatile int sm64ds_debug_log;   /* vita_display.cpp: the DEBUG LOG setting */
 void __real__ZN15ModelComponents6RenderEP9Matrix4x3P7Vector3(void *self, int *mat, int *scale);
 void __real__ZN17dExtSimpleModel_c6RenderEPK7Vector3(void *self, const int *scale);
 void __real_MulMat4x3Mat4x3(const int *a, const int *b, int *dst);
@@ -144,7 +145,7 @@ static void watch(const void *self, const int *mat, const int *scale, const void
     e->size = (float)size;
     e->frame = g_frame;
     if (!what) return;
-    if (g_glitch_lines < 60) {
+    if (sm64ds_debug_log && g_glitch_lines < 60) {
         if (!g_glitch_lines++)
             printf("  mtrace base %p (__wrap_MulMat4x3Mat4x3)\n", (void *)&__wrap_MulMat4x3Mat4x3);
         printf("  glitch? frame %u: model %p (file %p, %u bones) drawn from %p %s: size %.2f -> %.2f"
@@ -253,7 +254,7 @@ void sm64ds_model_trace_frame(bool arm)
         fflush(stdout);
         g_armed = 0;
     }
-    if (arm) {
+    if (arm && sm64ds_debug_log) {
         printf("  mtrace base %p (__wrap_MulMat4x3Mat4x3)\n", (void *)&__wrap_MulMat4x3Mat4x3);
         g_armed = 2;
         g_lines = 0;

@@ -347,10 +347,25 @@ int dBgW_KcMbg::DetectClsn(dBgCh_Lin &ray) {
     int hit = dBgW_Kc::DetectClsn(data_020a0d0c);
     if (hit != 0) {
         Fix12i distance = data_020a0d0c.clsnDist;
+#if defined(SM64DS_PLATFORM_PC)
+        /* data_020a0d60 and data_020a0d1c are the scratch line's own fields
+           (its lineEnd, +0x54, the hit point after a hit; its dBgPi base,
+           +0x10), but the port stores each name apart, so they stayed zero:
+           every line probe hitting a moving or scaled object's collision
+           answered the object's origin. The follow camera's probes did,
+           near the carousel, the tower and the ship (it looked at the
+           object's centre), and so may have the ledge grabs. */
+        func_02039e30(this, &data_020a0d0c.lineEnd, &worldPos);
+#else
         func_02039e30(this, &data_020a0d60, &worldPos);
+#endif
         ray.SetClsnPos(worldPos);
         ray.clsnDist = distance;
+#if defined(SM64DS_PLATFORM_PC)
+        (dBgPi &)ray = (dBgPi &)data_020a0d0c;
+#else
         (dBgPi &)ray = data_020a0d1c;
+#endif
         ray.hasClsn = 1;
     }
     return hit;

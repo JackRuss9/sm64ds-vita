@@ -63,11 +63,14 @@ extern "C" daDonketu_c *daDonketu_c_classInit() {
 int daDonketu_c::InitResources() {
     mBigBullyID = 0;
     mFileTable = (int)&data_ov064_0211b834;
-    InitResourcesCommon();
 #if defined(SM64DS_PLATFORM_PC)
-    /* The ROM leaves r0 as it is here; GCC takes falling off a value-
-       returning function as unreachable and runs into whatever follows. */
-    return {};
+    /* The ROM tail-returns this call's result (it is left in r0). This was
+       `return {}` (0), which the actor manager takes as a failed set-up:
+       the actor was never created -- in Lethal Lava Land, the Big Bully's
+       three small Bullies. */
+    return InitResourcesCommon();
+#else
+    InitResourcesCommon();
 #endif
 }
 

@@ -19,6 +19,18 @@ struct GlScreens {
     const uint8_t *menu;                     // the settings menu, BGRA, or null
     bool menu_changed;                       // its picture is new
     int menu_w, menu_h;
+    // Two-screen 3D (some minigames: engine A draws one screen a frame,
+    // alternately, and the game captures it for engine B to show on the
+    // other). hold: engine A's picture of this frame is also kept, on the
+    // GPU; dual: the other screen shows the one kept last frame instead of
+    // engine B's copy of it (which only the CPU could draw: 60 ms a frame,
+    // and next to the GPU's picture it flickered).
+    bool hold, dual;
+    // with hold: the kept picture read back here, at the DS's resolution
+    // (256x192, 0xAARRGGBB, top row first), right after it is drawn and
+    // before the frame is shown; read_back_done says it was
+    uint32_t *read_back;
+    bool read_back_done;
 };
 
 extern "C" {
@@ -31,6 +43,8 @@ bool sm64ds_gl_init(void);
    display (1x when that is 0) */
 void sm64ds_gl_render_3d(const ntr::GxFrame &frame, ntr::Framebuffer *fb, int scale, bool wide,
                          int native_w = 0, int native_h = 0);
+/* For the debug log: GPU textures made and deleted since the last call. */
+void sm64ds_gl_texture_counts(unsigned *made, unsigned *deleted, unsigned *cached);
 /* Both screens and the frame-rate line, then shown. */
-void sm64ds_gl_present(const GlScreens &s);
+void sm64ds_gl_present(GlScreens &s);
 }
